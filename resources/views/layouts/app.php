@@ -16,32 +16,34 @@ $current = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $menus = [
     'admin' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
-        ['people', 'menu.groups', null],
-        ['journal-text', 'menu.topics', null],
-        ['check2-square', 'menu.topic_approval', null],
-        ['file-earmark-pdf', 'menu.proposals', null],
-        ['person-check', 'menu.committee_assignment', null],
-        ['clipboard-data', 'menu.evaluation', null],
-        ['award', 'menu.final_approval', null],
-        ['bar-chart', 'menu.reports', null],
+        ['people', 'menu.groups', '/groups'],
+        ['journal-text', 'menu.topics', '/topics'],
+        ['check2-square', 'menu.topic_approval', '/topic-approval'],
+        ['file-earmark-pdf', 'menu.proposals', '/proposals'],
+        ['person-check', 'menu.committee_assignment', '/committee-assignment'],
+        ['clipboard-data', 'menu.evaluation', '/evaluations'],
+        ['award', 'menu.final_approval', '/final-approval'],
+        ['bar-chart', 'menu.reports', '/reports'],
         ['person-gear', 'menu.users', '/admin/users'],
-        ['gear', 'menu.settings', null],
+        ['gear', 'menu.settings', '/admin/settings'],
     ],
     'student' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
-        ['people', 'menu.groups', null],
-        ['journal-text', 'menu.topics', null],
-        ['file-earmark-pdf', 'menu.proposals', null],
+        ['people', 'menu.groups', '/groups'],
+        ['journal-text', 'menu.topics', '/topics'],
+        ['file-earmark-pdf', 'menu.proposals', '/proposals'],
     ],
     'advisor' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
-        ['people', 'menu.groups', null],
-        ['check2-square', 'menu.topic_approval', null],
-        ['file-earmark-check', 'menu.advisor_review', null],
+        ['people', 'menu.groups', '/groups'],
+        ['check2-square', 'menu.topic_approval', '/topic-approval'],
+        ['file-earmark-check', 'menu.advisor_review', '/advisor-review'],
+        ['file-earmark-pdf', 'menu.proposals', '/proposals'],
+        ['bar-chart', 'menu.reports', '/reports'],
     ],
     'committee' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
-        ['clipboard-data', 'menu.evaluation', null],
+        ['clipboard-data', 'menu.evaluation', '/evaluations'],
     ],
 ];
 $menu = $menus[$activeRole] ?? [];
@@ -122,7 +124,7 @@ $menu = $menus[$activeRole] ?? [];
                             <span class="badge badge-soon ms-1"><?= e(__('menu.coming_soon')) ?></span>
                         </span>
                     <?php else: ?>
-                        <a class="nav-link <?= str_ends_with((string) $current, $href) || str_contains((string) $current, $href . '/') ? 'active' : '' ?>" href="<?= e(url($href)) ?>">
+                        <a class="nav-link <?= $current === url($href) || str_starts_with((string) $current, url($href) . '/') ? 'active' : '' ?>" href="<?= e(url($href)) ?>">
                             <i class="bi bi-<?= e($icon) ?>"></i> <?= e(__($label)) ?>
                         </a>
                     <?php endif; ?>

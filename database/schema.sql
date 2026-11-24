@@ -757,10 +757,10 @@ BEGIN
     IF OLD.status = 'submitted' AND NEW.status <> 'reopened' THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Evaluation is locked after submission';
     END IF;
-    IF NEW.status = 'reopened' AND OLD.status <> 'submitted' THEN
+    IF NEW.status = 'reopened' AND OLD.status NOT IN ('submitted', 'reopened') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Only a submitted evaluation can be reopened';
     END IF;
-    IF NEW.status = 'reopened' AND (NEW.reopened_by IS NULL OR CHAR_LENGTH(TRIM(COALESCE(NEW.reopen_reason, ''))) = 0) THEN
+    IF NEW.status = 'reopened' AND OLD.status = 'submitted' AND (NEW.reopened_by IS NULL OR CHAR_LENGTH(TRIM(COALESCE(NEW.reopen_reason, ''))) = 0) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Reopening requires an administrator and a reason';
     END IF;
 END$$

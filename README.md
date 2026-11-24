@@ -15,7 +15,12 @@
 | 2 | Workflow design และ architecture | state machine ใน `app/Services/Workflow` |
 | 3 | Database (`database/schema.sql`, 32 ตาราง, 23 triggers) | **เสร็จ ทดสอบแล้ว** |
 | 4 | Authentication และ Role Management | **เสร็จ ทดสอบแล้ว** |
-| 5–14 | Group registration ถึง Deployment | ยังไม่เริ่ม |
+| 5 | Project Group Registration | **เสร็จ ทดสอบแล้ว** |
+| 6–7 | Topic Submission และ Topic Approval (Advisor → Course Administrator) | **เสร็จ ทดสอบแล้ว** |
+| 8–9 | Proposal Submission, Advisor Review, Committee Assignment | **เสร็จ ทดสอบแล้ว** |
+| 10–11 | Committee Evaluation และ Final Approval | **เสร็จ ทดสอบแล้ว** |
+| 12 | Reports (Excel/CSV/PDF) และ System Settings | **เสร็จ ทดสอบแล้ว** |
+| 13–14 | Acceptance test และ Deployment (InfinityFree) | ทดสอบ end-to-end แล้ว, deploy ได้ |
 
 รายละเอียดสิ่งที่ทำแล้ว/ข้อจำกัด: `docs/phase-status.md`
 

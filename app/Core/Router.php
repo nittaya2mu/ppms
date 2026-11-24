@@ -39,7 +39,12 @@ final class Router
     private function add(string $method, string $path, array|callable $handler, array $middleware): void
     {
         $pattern = rtrim($this->groupPrefix . $path, '/') ?: '/';
-        $regex = '#^' . preg_replace('#\{([a-z_]+)\}#', '(?P<$1>[0-9]+)', $pattern) . '$#';
+        // {id}-style parameters are numeric; {key} is a lowercase slug.
+        $regex = '#^' . preg_replace_callback(
+            '#\{([a-z_]+)\}#',
+            fn ($m) => $m[1] === 'key' ? '(?P<key>[a-z_]+)' : '(?P<' . $m[1] . '>[0-9]+)',
+            $pattern
+        ) . '$#';
         $this->routes[] = [
             'method'     => $method,
             'pattern'    => $pattern,

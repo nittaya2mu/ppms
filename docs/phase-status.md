@@ -45,36 +45,33 @@ Each default is a row in `system_settings` (see `database/seed.sql`) so it can b
 - Tests: `tests/Integration/AuthServiceTest.php`, HTTP smoke test (login, CSRF 419, forced password change,
   student blocked from `/admin/*` with 403 even after attempting to switch role).
 
-## Built ahead for later phases (unit-tested, not yet wired to screens)
+## Phases 5–12 — Workflow modules (done, tested)
 
-- `Services/Workflow/Workflows.php`: group, topic (T1–T10) and proposal (P1–P16) state machines.
-- `Services/Workflow/WorkflowEngine.php`: locked, transactional transitions with status history and audit.
-- `Services/ScoreCalculator.php`: Section 9.2/9.5 formulas, weight validation, disagreement and justification rules.
+| Phase | Module | Screens / routes |
+| --- | --- | --- |
+| 5 | Project groups: create, invite/accept, submit, admin verify/reject, advisor request/assign/change, admin member changes with history | `/groups`, `/groups/{id}` |
+| 6 | Topic submission: 11 fields, drafts, versions (v1, v2…), supporting documents, late flag | `/projects/{id}#topic`, `/topics` |
+| 7 | Topic approval: advisor (approve / revise / reject) → Course Administrator final approval | `/topic-approval` |
+| 8 | Proposal submission: PDF upload, 13-section checklist, response-to-comments for revisions, immutable versions | `/projects/{id}#proposal`, `/proposals` |
+| 9 | Advisor proposal review + committee assignment (2 distinct members, advisor excluded, deadline, replace before submit), revision Mode A/B | `/advisor-review`, `/committee-assignment` |
+| 10 | Independent committee evaluation: 1–5 rubric, live weighted score, recommendation, 5 comment types, draft/submit lock, admin reopen with reason | `/evaluations`, `/evaluations/{id}` |
+| 11 | Final approval: S1, S2, S_avg, disagreement flag, no auto-approval, justification rule, conflict-of-interest block, printable approval summary | `/final-approval`, `/projects/{id}/summary` |
+| 12 | 12 reports with on-screen filter, Excel (.xlsx), CSV and print-to-PDF; system settings (OQ defaults, academic years/semesters/courses/offerings, deadlines, rubric with weight check and lock) | `/reports`, `/admin/settings/*` |
+
+Access control: `AccessPolicy` checks group membership / advisor / committee / admin on every project page and
+file download; students never see committee names (`evaluation.show_committee_names`) or unreleased scores.
+
+Tests:
+- `tests/Integration/AcceptanceScenarioTest.php` — Section 22 scenario through the service layer plus negative cases.
+- `tests/http_e2e.php` — the same scenario through real HTTP (login, CSRF, forms, uploads) for all roles, then
+  opens every page for every role and every report in all formats (154 checks).
+  Run against a fresh database loaded with schema + seed + seed_demo:
+  `PPMS_DB_DATABASE=ppms_e2e php -S 127.0.0.1:8000 -t public public/index.php` then
+  `PPMS_DB_DATABASE=ppms_e2e php tests/http_e2e.php`.
 
 ## Known limitations
 
-- Menu items for Phases 5–12 are shown as "อยู่ระหว่างพัฒนา" (disabled).
-- Excel/PDF export libraries (PhpSpreadsheet, mPDF) are not installed yet (Phase 12).
-- Email notifications are designed (`notifications.email_status`) but not sent (optional extension).
-- Course code and semester dates in `seed.sql` are placeholders marked `[CONFIRM]`.
+- PDF export uses the browser's print-to-PDF on a print layout (no server-side PDF library on shared hosting).
+- Email notifications are designed (`notifications.email_status`) but not sent; in-app notifications work.
+- Course code and semester dates in `seed.sql` are placeholders marked `[CONFIRM]` (editable in System Settings).
 - PHPUnit could not be installed in the build environment; tests use the bundled runner `tests/run.php`.
-
-## Next: Phase 5 — Group registration and topic submission
-
-Academic year / offering / deadline admin screens, group creation and invitations, group verification,
-advisor request and assignment, topic draft and submission with supporting documents.
-
-## Deployment target: InfinityFree (chosen 2026-11-24)
-
-- InfinityFree grants no TRIGGER privilege and foreign keys are unreliable, so the host uses
-  `database/schema_shared_hosting.sql`, generated from `schema.sql` by `tools/build-shared-schema.php`
-  (a unit test fails if the generated file is stale).
-- The trigger rules are duplicated in PHP: `App\Core\IntegrityGuard` (every query: append-only tables,
-  no deletion of proposal versions) and `App\Services\Rules\*` (committee validity, evaluation lock and
-  reopen, immutable versions). Future services for Phases 5-11 must call these rules.
-- Tests run in both modes: `php tests/run.php` and `PPMS_SCHEMA=shared php tests/run.php`.
-- Verified: import as a MySQL user limited to InfinityFree's privileges (ALTER, CREATE, DELETE, DROP,
-  INDEX, INSERT, SELECT, UPDATE, LOCK TABLES), and the packaged zip served from an Apache htdocs root
-  with production settings (login, password change, user management, private folders return 403).
-- Not verified on InfinityFree itself (no account in the build environment).
-- Guide: `docs/deploy-infinityfree.md`. Package: `php tools/package.php`.
