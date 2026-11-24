@@ -31,7 +31,7 @@ if ($zip->open($out, ZipArchive::CREATE) !== true) {
     exit(1);
 }
 
-$appEntries = ['.htaccess', 'app', 'config', 'public', 'resources', 'routes', 'storage'];
+$appEntries = ['.htaccess', 'index.php', 'app', 'config', 'public', 'resources', 'routes', 'storage'];
 $skip = [
     'config/local.php',            // contains credentials
     'storage/uploads/',            // runtime data

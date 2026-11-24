@@ -14,6 +14,7 @@ final class App
     {
         date_default_timezone_set((string) config('timezone', 'Asia/Bangkok'));
         mb_internal_encoding('UTF-8');
+        self::ensureStorage();
         self::securityHeaders();
 
         $debug = (bool) config('debug', false);
@@ -63,6 +64,23 @@ final class App
         header('X-Frame-Options: DENY');
         header('Referrer-Policy: same-origin');
         header("Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'");
+    }
+
+    /**
+     * Recreates storage folders (and the deny-all .htaccess) when an upload tool skipped
+     * them; folders that only contain dot-files are often dropped on upload.
+     */
+    private static function ensureStorage(): void
+    {
+        $base = dirname(__DIR__, 2) . '/storage';
+        foreach (['', '/uploads', '/logs', '/cache'] as $sub) {
+            if (!is_dir($base . $sub)) {
+                @mkdir($base . $sub, 0775, true);
+            }
+        }
+        if (is_dir($base) && !is_file($base . '/.htaccess')) {
+            @file_put_contents($base . '/.htaccess', "Require all denied\n");
+        }
     }
 
     public static function logError(Throwable $e): void
