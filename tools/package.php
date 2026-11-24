@@ -12,6 +12,9 @@ declare(strict_types=1);
  *   database/   import into the database with phpMyAdmin (never uploaded to htdocs)
  *   README-DEPLOY.md
  *
+ * Also writes build/ppms-htdocs-upload.zip: the htdocs/ contents at the zip root, for the
+ * host's "Upload & Unzip" inside htdocs/ (keeps an existing config/local.php).
+ *
  * Excludes tests, tools, docs, vendor, git files and config/local.php (secrets).
  */
 
@@ -40,6 +43,13 @@ $skip = [
 ];
 $count = 0;
 
+// Second archive: the same app files at the zip ROOT, for "Upload & Unzip" directly inside htdocs/.
+// It never contains config/local.php, so unzipping over an existing install keeps the settings.
+$flatOut = dirname($out) . '/ppms-htdocs-upload.zip';
+@unlink($flatOut);
+$flat = new ZipArchive();
+$flat->open($flatOut, ZipArchive::CREATE);
+
 foreach ($appEntries as $entry) {
     $path = $root . '/' . $entry;
     $files = is_dir($path)
@@ -54,6 +64,7 @@ foreach ($appEntries as $entry) {
             }
         }
         $zip->addFile($file->getPathname(), 'htdocs/' . $rel);
+        $flat->addFile($file->getPathname(), $rel);
         $count++;
     }
 }
@@ -66,4 +77,6 @@ $zip->addFile($root . '/docs/deploy-infinityfree.md', 'README-DEPLOY.md');
 $count++;
 
 $zip->close();
+$flat->close();
 printf("Wrote %s (%d files, %.1f KB)\n", $out, $count, filesize($out) / 1024);
+printf("Wrote %s (app files only, for Upload & Unzip inside htdocs/)\n", $flatOut);

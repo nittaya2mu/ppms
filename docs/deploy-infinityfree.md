@@ -38,6 +38,15 @@
 
 ## 4. อัปโหลดไฟล์
 
+**วิธีที่แนะนำ: Upload & Unzip** (ไฟล์ครบแน่นอน รวมไฟล์ที่ขึ้นต้นด้วยจุด)
+
+1. เปิด File Manager แล้วเข้าโฟลเดอร์ `htdocs`
+2. เลือก **Upload & Unzip** แล้วเลือกไฟล์ `ppms-htdocs-upload.zip`
+   (zip นี้มีไฟล์ของระบบอยู่ที่ระดับบนสุด แตกแล้วอยู่ใน `htdocs` ทันที และไม่มี `config/local.php`
+   จึงแตกทับการติดตั้งเดิมได้โดยค่าที่ตั้งไว้ไม่หาย)
+
+**วิธีสำรอง: FTP**
+
 แนะนำ FTP ด้วย [FileZilla](https://filezilla-project.org) เพราะอัปโหลดทั้งโฟลเดอร์ได้ในครั้งเดียว
 
 1. Control Panel > **FTP Details**: จด FTP Hostname, Username และ Password
