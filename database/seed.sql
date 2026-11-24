@@ -1,6 +1,6 @@
 -- =============================================================================
 -- PPMS seed data (required). Run after schema.sql.
---   mysql -u root -p ppms < database/seed.sql
+--   mysql -u root -p ppms < database/seed.sql   (select the PPMS database first in phpMyAdmin)
 --
 -- Default administrator:  username = admin  /  password = Admin@1234
 -- The system forces a password change on first login.
@@ -11,7 +11,7 @@
 
 SET NAMES utf8mb4;
 SET time_zone = '+07:00';
-USE ppms;
+
 
 -- Roles (T01) -----------------------------------------------------------------
 INSERT INTO roles (id, code, name_th, name_en) VALUES

@@ -55,6 +55,7 @@ final class Database
 
     public function query(string $sql, array $params = []): PDOStatement
     {
+        IntegrityGuard::check($sql);
         $stmt = $this->pdo->prepare($sql);
         foreach ($params as $key => $value) {
             $param = is_int($key) ? $key + 1 : (str_starts_with((string) $key, ':') ? $key : ':' . $key);

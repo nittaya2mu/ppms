@@ -22,6 +22,8 @@ final class SchemaConstraintsTest extends DatabaseTestCase
     public function testSeedLoadsAllTablesAndDefaultRubric(): void
     {
         $this->assertSame(32, (int) $this->db->value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"));
+        $triggers = (int) $this->db->value('SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = DATABASE()');
+        $this->assertSame(self::schemaMode() === 'full' ? 23 : 0, $triggers);
         $this->assertSame('100.00', (string) $this->db->value('SELECT SUM(weight) FROM evaluation_criteria WHERE offering_id = 1'));
     }
 
@@ -58,6 +60,7 @@ final class SchemaConstraintsTest extends DatabaseTestCase
 
     public function testAdvisorCannotBeCommitteeMember(): void   // Section 3.3, 8
     {
+        $this->requireFullSchema();
         $g = $this->fx->group('G1', 1);
         $pp = $this->fx->proposalWithVersion($this->fx->project($g));
         $this->assertDbRejects(fn () => $this->fx->assignment($pp['proposal'], $pp['version'], 101, 101, 103), 'cannot be the project advisor');
@@ -65,6 +68,7 @@ final class SchemaConstraintsTest extends DatabaseTestCase
 
     public function testCommitteeMembersNeedActiveCommitteeRole(): void   // Section 8
     {
+        $this->requireFullSchema();
         $g = $this->fx->group('G1', 1);
         $pp = $this->fx->proposalWithVersion($this->fx->project($g));
         $this->db->query('UPDATE user_roles SET is_active = 0 WHERE user_id = 104 AND role_id = 4');
@@ -74,12 +78,14 @@ final class SchemaConstraintsTest extends DatabaseTestCase
 
     public function testAssignedVersionCannotChangeWithinARound(): void   // Section 3.4
     {
+        $this->requireFullSchema();
         $ids = $this->fx->evaluationReady();
         $this->assertDbRejects(fn () => $this->db->query('UPDATE committee_assignments SET proposal_version_id = 999 WHERE id = :id', ['id' => $ids['assignment']]));
     }
 
     public function testSubmittedEvaluationIsLockedUntilAdminReopens(): void   // Section 3.4, FR-EVL-04
     {
+        $this->requireFullSchema();
         $ids = $this->fx->evaluationReady();
         $crit = (int) $this->db->value('SELECT id FROM evaluation_criteria WHERE seq_no = 1');
         $this->db->insert('evaluation_scores', ['evaluation_id' => $ids['eval1'], 'criterion_id' => $crit, 'rating' => 4, 'weight_snapshot' => 15, 'weighted_score' => 12]);
@@ -113,6 +119,11 @@ final class SchemaConstraintsTest extends DatabaseTestCase
         // The same version cannot be decided twice at the same level.
         $this->assertDbRejects(fn () => $this->db->insert('topic_approvals', ['topic_id' => $t['topic'], 'submission_id' => $t['submission'], 'level' => 'advisor', 'decision' => 'rejected', 'comments' => 'x', 'decided_by' => 101]), 'Duplicate');
 
+        if (self::schemaMode() === 'full') {
+            // The trigger refuses it too, even when SQL bypasses the PHP guard.
+            $this->assertDbRejects(fn () => $this->rawExec("UPDATE topic_approvals SET decision = 'rejected'"), 'append-only');
+        }
+
         $this->db->insert('audit_logs', ['action' => 'test']);
         $this->assertDbRejects(fn () => $this->db->query('DELETE FROM audit_logs'), 'append-only');
         $this->assertDbRejects(fn () => $this->db->query("UPDATE audit_logs SET action = 'x'"), 'append-only');
@@ -140,9 +151,11 @@ final class SchemaConstraintsTest extends DatabaseTestCase
     {
         $g = $this->fx->group('G1', 1);
         $pp = $this->fx->proposalWithVersion($this->fx->project($g));
-        $other = $this->fx->file();
-        $this->assertDbRejects(fn () => $this->db->query('UPDATE proposal_versions SET file_id = :f WHERE id = :id', ['f' => $other, 'id' => $pp['version']]), 'immutable');
         $this->assertDbRejects(fn () => $this->db->query('DELETE FROM proposal_versions WHERE id = :id', ['id' => $pp['version']]));
+        if (self::schemaMode() === 'full') {
+            $other = $this->fx->file();
+            $this->assertDbRejects(fn () => $this->db->query('UPDATE proposal_versions SET file_id = :f WHERE id = :id', ['f' => $other, 'id' => $pp['version']]), 'immutable');
+        }
         // Status of the version may still move along the workflow.
         $this->db->query("UPDATE proposal_versions SET version_status = 'superseded' WHERE id = :id", ['id' => $pp['version']]);
         $this->assertSame('superseded', $this->db->value('SELECT version_status FROM proposal_versions WHERE id = :id', ['id' => $pp['version']]));
@@ -150,6 +163,7 @@ final class SchemaConstraintsTest extends DatabaseTestCase
 
     public function testSubmittedTopicVersionIsImmutable(): void   // Section 3.2
     {
+        $this->requireFullSchema();
         $g = $this->fx->group('G1', 1);
         $t = $this->fx->topicWithSubmission($this->fx->project($g));
         $this->assertDbRejects(fn () => $this->db->query("UPDATE topic_submissions SET title_th = 'แก้หลังส่ง' WHERE id = :id", ['id' => $t['submission']]), 'immutable');

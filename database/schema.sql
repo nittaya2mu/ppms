@@ -3,19 +3,29 @@
 -- Database schema (MySQL 8.0+ / MariaDB 10.6+)
 -- Source of truth: Phase 1 design doc, section 9 (Data Dictionary, T01-T32)
 --
--- Import with phpMyAdmin (Import tab) or:
---   mysql -u root -p < database/schema.sql
--- The script drops and recreates the `ppms` database.
+-- 1. Create an empty database first (utf8mb4_unicode_ci), e.g. in phpMyAdmin:
+--      CREATE DATABASE ppms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- 2. Select that database, then Import this file (phpMyAdmin) or run:
+--      mysql -u root -p ppms < database/schema.sql
+--
+-- Re-importing DROPS ALL PPMS TABLES AND DATA in the selected database.
+-- Shared hosting without trigger/foreign-key privileges (e.g. InfinityFree):
+-- import database/schema_shared_hosting.sql instead (generated from this file).
 -- =============================================================================
 
 SET NAMES utf8mb4;
 SET time_zone = '+07:00';
-
-DROP DATABASE IF EXISTS ppms;
-CREATE DATABASE ppms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE ppms;
-
 SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS
+    system_settings, status_histories, audit_logs, notifications,
+    revision_responses, revision_requests, approval_decisions,
+    evaluation_comments, evaluation_scores, committee_evaluations, evaluation_criteria,
+    committee_assignments, proposal_versions, proposal_submissions, document_files,
+    topic_approvals, topic_submissions, project_topics, projects, project_advisors,
+    group_member_histories, project_members, project_groups,
+    deadlines, course_offerings, courses, semesters, academic_years,
+    students, user_roles, users, roles;
 
 -- -----------------------------------------------------------------------------
 -- 9.1 Users and academic structure

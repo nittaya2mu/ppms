@@ -5,16 +5,26 @@ declare(strict_types=1);
 namespace Tests;
 
 use App\Core\Database;
+use App\Core\IntegrityViolation;
+use App\Services\Rules\RuleViolation;
 
 /**
- * Rebuilds a throw-away database (default `ppms_test`) from database/schema.sql + seed.sql
- * + seed_demo.sql before EVERY test, so tests are independent.
+ * Rebuilds a throw-away database (default `ppms_test`) before EVERY test, so tests are independent.
+ *
+ *   PPMS_SCHEMA=full    (default) database/schema.sql            - with foreign keys and triggers
+ *   PPMS_SCHEMA=shared            database/schema_shared_hosting.sql - InfinityFree variant
+ *
  * Connection settings come from config/database.php / PPMS_DB_* environment variables;
- * the account needs CREATE/DROP on the test database and TRIGGER privilege.
+ * the account needs CREATE/DROP on the test database (and TRIGGER for the full schema).
  */
 abstract class DatabaseTestCase extends TestCase
 {
     protected Database $db;
+
+    public static function schemaMode(): string
+    {
+        return getenv('PPMS_SCHEMA') === 'shared' ? 'shared' : 'full';
+    }
 
     public function setUp(): void
     {
@@ -30,14 +40,13 @@ abstract class DatabaseTestCase extends TestCase
             $config['password'],
             [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
         );
-        foreach (['schema.sql', 'seed.sql', 'seed_demo.sql'] as $file) {
-            $sql = file_get_contents(dirname(__DIR__) . '/database/' . $file);
-            $sql = preg_replace(
-                ['/DROP DATABASE IF EXISTS ppms;/', '/CREATE DATABASE ppms /', '/USE ppms;/'],
-                ["DROP DATABASE IF EXISTS $testDb;", "CREATE DATABASE $testDb ", "USE $testDb;"],
-                $sql
-            );
-            SqlScript::run($pdo, $sql);
+        $pdo->exec("DROP DATABASE IF EXISTS `$testDb`");
+        $pdo->exec("CREATE DATABASE `$testDb` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $pdo->exec("USE `$testDb`");
+
+        $schema = self::schemaMode() === 'shared' ? 'schema_shared_hosting.sql' : 'schema.sql';
+        foreach ([$schema, 'seed.sql', 'seed_demo.sql'] as $file) {
+            SqlScript::run($pdo, (string) file_get_contents(dirname(__DIR__) . '/database/' . $file));
         }
 
         Database::reset(array_merge($config, ['database' => $testDb]));
@@ -45,11 +54,38 @@ abstract class DatabaseTestCase extends TestCase
         \App\Services\SettingsService::flush();
     }
 
-    /** Asserts that a statement is rejected by the database (constraint or trigger). */
+    /** Skips a test that checks a database-only safeguard (trigger or foreign key). */
+    protected function requireFullSchema(): void
+    {
+        if (self::schemaMode() !== 'full') {
+            throw new SkipTest('needs triggers/foreign keys (full schema)');
+        }
+    }
+
+    /** Raw SQL that bypasses App\Core\IntegrityGuard, to prove the database itself refuses it. */
+    protected function rawExec(string $sql): void
+    {
+        $this->db->pdo()->exec($sql);
+    }
+
+    /** Asserts that the data layer refuses an operation (constraint, trigger or PHP integrity guard). */
     protected function assertDbRejects(callable $fn, string $messageContains = ''): void
     {
-        $this->assertThrows(\PDOException::class, $fn, $messageContains === '' ? null : $messageContains);
+        $this->assertions++;
+        try {
+            $fn();
+        } catch (\PDOException | IntegrityViolation | RuleViolation $e) {
+            if ($messageContains !== '' && !str_contains($e->getMessage(), $messageContains)) {
+                throw new AssertionFailed("Rejected, but message '{$e->getMessage()}' lacks '$messageContains'");
+            }
+            return;
+        }
+        throw new AssertionFailed('Expected the operation to be rejected');
     }
+}
+
+final class SkipTest extends \RuntimeException
+{
 }
 
 /** Executes a .sql file that may contain DELIMITER blocks (triggers). */

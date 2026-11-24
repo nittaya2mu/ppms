@@ -10,7 +10,7 @@
 -- =============================================================================
 
 SET NAMES utf8mb4;
-USE ppms;
+
 
 SET @pw = '$2y$10$UVXelNRcIbFEE5srqPtWN.0Rh0481Dy/32iqkq0rR9ncoQJkePR82';
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 /**
  * Test runner:  php tests/run.php [filter]
  *   filter = optional substring of "ClassName::testMethod"
+ *   PPMS_SCHEMA=shared php tests/run.php   runs against the shared-hosting schema
  * Exit code 0 when all tests pass.
  */
 
@@ -30,7 +31,7 @@ $_SESSION = [];
 
 $filter = $argv[1] ?? '';
 $files = array_merge(glob(__DIR__ . '/Unit/*Test.php') ?: [], glob(__DIR__ . '/Integration/*Test.php') ?: []);
-$passed = $failed = $assertions = 0;
+$passed = $failed = $skipped = $assertions = 0;
 $failures = [];
 $start = microtime(true);
 
@@ -51,6 +52,9 @@ foreach ($files as $file) {
             $test->$method();
             $passed++;
             echo '.';
+        } catch (Tests\SkipTest $e) {
+            $skipped++;
+            echo 'S';
         } catch (Throwable $e) {
             $failed++;
             $failures[] = [$name, $e];
@@ -60,7 +64,8 @@ foreach ($files as $file) {
     }
 }
 
-printf("\n\n%d passed, %d failed, %d assertions (%.2fs)\n", $passed, $failed, $assertions, microtime(true) - $start);
+$mode = getenv('PPMS_SCHEMA') === 'shared' ? 'shared' : 'full';
+printf("\n\nschema: %s | %d passed, %d failed, %d skipped, %d assertions (%.2fs)\n", $mode, $passed, $failed, $skipped, $assertions, microtime(true) - $start);
 foreach ($failures as [$name, $e]) {
     printf("\nFAIL %s\n  %s: %s\n  at %s:%d\n", $name, get_class($e), $e->getMessage(), $e->getFile(), $e->getLine());
 }

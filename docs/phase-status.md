@@ -63,3 +63,18 @@ Each default is a row in `system_settings` (see `database/seed.sql`) so it can b
 
 Academic year / offering / deadline admin screens, group creation and invitations, group verification,
 advisor request and assignment, topic draft and submission with supporting documents.
+
+## Deployment target: InfinityFree (chosen 2026-11-24)
+
+- InfinityFree grants no TRIGGER privilege and foreign keys are unreliable, so the host uses
+  `database/schema_shared_hosting.sql`, generated from `schema.sql` by `tools/build-shared-schema.php`
+  (a unit test fails if the generated file is stale).
+- The trigger rules are duplicated in PHP: `App\Core\IntegrityGuard` (every query: append-only tables,
+  no deletion of proposal versions) and `App\Services\Rules\*` (committee validity, evaluation lock and
+  reopen, immutable versions). Future services for Phases 5-11 must call these rules.
+- Tests run in both modes: `php tests/run.php` and `PPMS_SCHEMA=shared php tests/run.php`.
+- Verified: import as a MySQL user limited to InfinityFree's privileges (ALTER, CREATE, DELETE, DROP,
+  INDEX, INSERT, SELECT, UPDATE, LOCK TABLES), and the packaged zip served from an Apache htdocs root
+  with production settings (login, password change, user management, private folders return 403).
+- Not verified on InfinityFree itself (no account in the build environment).
+- Guide: `docs/deploy-infinityfree.md`. Package: `php tools/package.php`.
