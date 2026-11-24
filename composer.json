@@ -1,0 +1,32 @@
+{
+    "name": "nittaya2mu/ppms",
+    "description": "Project Preparation Management System (PPMS) - Department of Electrical and Computer Engineering",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-mbstring": "*",
+        "ext-fileinfo": "*"
+    },
+    "suggest": {
+        "phpoffice/phpspreadsheet": "Excel export (Phase 12)",
+        "mpdf/mpdf": "PDF export with Thai fonts (Phase 12)"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        },
+        "files": [
+            "app/Helpers/functions.php"
+        ]
+    },
+    "scripts": {
+        "test": "php tests/run.php",
+        "serve": "php -S localhost:8000 -t public"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

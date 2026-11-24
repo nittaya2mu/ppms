@@ -1,0 +1,6 @@
+# Defense in depth for XAMPP installs where the project root is inside htdocs:
+# only /public is reachable; app/, config/, database/, storage/ are never served.
+RewriteEngine On
+RewriteRule ^(app|config|database|resources|routes|storage|tests|vendor|docs)(/|$) - [F,L]
+RewriteRule ^$ public/ [L]
+RewriteRule ^((?!public/).*)$ public/$1 [L]

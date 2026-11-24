@@ -1,0 +1,57 @@
+/* PPMS theme: navy blue, white, green accent, light gray backgrounds (Section 16) */
+:root {
+    --ppms-navy: #12305a;
+    --ppms-navy-dark: #0b1f3b;
+    --ppms-green: #1f9d55;
+    --ppms-green-dark: #177a42;
+    --ppms-gray: #f3f5f8;
+    --ppms-sidebar-w: 260px;
+    --ppms-topbar-h: 56px;
+    --bs-body-font-family: "Sarabun", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body { background: var(--ppms-gray); font-family: var(--bs-body-font-family); font-size: 1rem; }
+
+.text-ppms-navy { color: var(--ppms-navy) !important; }
+.text-ppms-green { color: #4ade80 !important; }
+.bg-ppms-navy { background: var(--ppms-navy) !important; color: #fff; }
+.bg-ppms-navy-subtle { background: #e3e9f3 !important; }
+
+.btn-ppms { background: var(--ppms-green); border-color: var(--ppms-green); color: #fff; }
+.btn-ppms:hover, .btn-ppms:focus { background: var(--ppms-green-dark); border-color: var(--ppms-green-dark); color: #fff; }
+
+.ppms-topbar { background: var(--ppms-navy); height: var(--ppms-topbar-h); }
+
+.ppms-sidebar { background: var(--ppms-navy-dark); color: #fff; }
+.ppms-sidebar .nav-link { color: rgba(255, 255, 255, .82); padding: .6rem 1rem; border-left: 3px solid transparent; }
+.ppms-sidebar .nav-link:hover { color: #fff; background: rgba(255, 255, 255, .06); }
+.ppms-sidebar .nav-link.active { color: #fff; background: rgba(255, 255, 255, .1); border-left-color: var(--ppms-green); }
+.ppms-sidebar .nav-link.disabled { color: rgba(255, 255, 255, .4); }
+.ppms-sidebar .nav-link .bi { width: 1.4rem; display: inline-block; }
+
+@media (min-width: 992px) {
+    .ppms-sidebar { position: fixed; top: var(--ppms-topbar-h); bottom: 0; left: 0; width: var(--ppms-sidebar-w); overflow-y: auto; }
+    .ppms-main { margin-left: var(--ppms-sidebar-w); }
+}
+.ppms-main { padding-top: var(--ppms-topbar-h); }
+
+.card { border: 0; box-shadow: 0 1px 2px rgba(16, 24, 40, .06); }
+.stat-card { border-top: 3px solid var(--ppms-navy); }
+.stat-card.stat-green { border-top-color: var(--ppms-green); }
+.stat-card.stat-amber { border-top-color: #d9a400; }
+.stat-card.stat-red { border-top-color: #c0392b; }
+.stat-card .bi { color: var(--ppms-navy); opacity: .6; }
+
+.ppms-auth-bg { background: linear-gradient(135deg, var(--ppms-navy-dark), var(--ppms-navy)); }
+
+/* Workflow progress indicator */
+.ppms-stepper { display: flex; list-style: none; padding: 0; margin: 0; counter-reset: step; }
+.ppms-stepper li { flex: 1; text-align: center; position: relative; font-size: .875rem; color: #6c757d; }
+.ppms-stepper li::before { content: ""; position: absolute; top: 15px; left: -50%; width: 100%; height: 2px; background: #d0d5dd; z-index: 0; }
+.ppms-stepper li:first-child::before { display: none; }
+.ppms-stepper .dot { position: relative; z-index: 1; display: inline-flex; width: 32px; height: 32px; border-radius: 50%; align-items: center; justify-content: center; background: #fff; border: 2px solid #d0d5dd; font-weight: 600; }
+.ppms-stepper .label { display: block; margin-top: .35rem; }
+.ppms-stepper li.done .dot { background: var(--ppms-green); border-color: var(--ppms-green); color: #fff; }
+.ppms-stepper li.done::before, .ppms-stepper li.current::before { background: var(--ppms-green); }
+.ppms-stepper li.current .dot { border-color: var(--ppms-navy); color: var(--ppms-navy); }
+.ppms-stepper li.current { color: var(--ppms-navy); font-weight: 600; }
