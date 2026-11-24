@@ -31,7 +31,19 @@ function url(string $path = '/'): string
 
 function asset(string $path): string
 {
-    return url('assets/' . ltrim($path, '/'));
+    $path = ltrim($path, '/');
+    // Cache-busting: append the file's modification time so browsers (and the host's cache)
+    // fetch a fresh copy after every upload.
+    $candidates = [dirname(__DIR__, 2) . '/public/assets/' . $path];
+    if (!empty($_SERVER['SCRIPT_FILENAME'])) {
+        $candidates[] = dirname((string) $_SERVER['SCRIPT_FILENAME']) . '/assets/' . $path;
+    }
+    foreach ($candidates as $file) {
+        if (is_file($file)) {
+            return url('assets/' . $path) . '?v=' . filemtime($file);
+        }
+    }
+    return url('assets/' . $path);
 }
 
 function csrf_token(): string
