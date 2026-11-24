@@ -131,6 +131,7 @@ return [
     'dash.final_approved' => 'อนุมัติขั้นสุดท้าย',
     'dash.topic_chart' => 'สถานะหัวข้อโครงงาน',
     'dash.proposal_chart' => 'สถานะ Proposal',
+    'dash.chart_empty' => 'ยังไม่มีข้อมูล',
     'dash.groups_pending' => 'กลุ่มที่รอตรวจสอบ',
     'dash.my_group' => 'กลุ่มของฉัน',
     'dash.no_group' => 'คุณยังไม่มีกลุ่มโครงงาน',

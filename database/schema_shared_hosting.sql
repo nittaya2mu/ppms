@@ -37,7 +37,7 @@ CREATE TABLE roles (
     name_en     VARCHAR(100) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uq_roles_code (code)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T02
 CREATE TABLE users (
@@ -62,7 +62,7 @@ CREATE TABLE users (
     UNIQUE KEY uq_users_username (username),
     UNIQUE KEY uq_users_email (email),
     KEY idx_users_active (is_active, deleted_at)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T03
 CREATE TABLE user_roles (
@@ -73,7 +73,7 @@ CREATE TABLE user_roles (
     granted_at DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, role_id),
     KEY idx_user_roles_role (role_id, is_active)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T04
 CREATE TABLE students (
@@ -89,7 +89,7 @@ CREATE TABLE students (
     PRIMARY KEY (id),
     UNIQUE KEY uq_students_user (user_id),
     UNIQUE KEY uq_students_code (student_code)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T05
 CREATE TABLE academic_years (
@@ -103,7 +103,7 @@ CREATE TABLE academic_years (
     PRIMARY KEY (id),
     UNIQUE KEY uq_academic_years_year (year_be),
     CONSTRAINT chk_academic_years_dates CHECK (start_date < end_date)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T06
 CREATE TABLE semesters (
@@ -118,7 +118,7 @@ CREATE TABLE semesters (
     UNIQUE KEY uq_semesters_year_term (academic_year_id, term_no),
     CONSTRAINT chk_semesters_term  CHECK (term_no BETWEEN 1 AND 3),
     CONSTRAINT chk_semesters_dates CHECK (start_date < end_date)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T07
 CREATE TABLE courses (
@@ -132,7 +132,7 @@ CREATE TABLE courses (
     updated_at  DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_courses_code (course_code)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T08
 CREATE TABLE course_offerings (
@@ -146,7 +146,7 @@ CREATE TABLE course_offerings (
     updated_at       DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_offerings_course_semester (course_id, semester_id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T09
 CREATE TABLE deadlines (
@@ -162,7 +162,7 @@ CREATE TABLE deadlines (
     updated_at    DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_deadlines_offering_type (offering_id, deadline_type)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
 -- 9.2 Project groups and topics
@@ -187,7 +187,7 @@ CREATE TABLE project_groups (
     PRIMARY KEY (id),
     UNIQUE KEY uq_groups_offering_code (offering_id, group_code),
     KEY idx_groups_status (offering_id, status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T11
 CREATE TABLE project_members (
@@ -207,7 +207,7 @@ CREATE TABLE project_members (
     UNIQUE KEY uq_member_one_active_group (offering_id, student_id, active_key),  -- BR-2
     UNIQUE KEY uq_group_one_leader (group_id, leader_key),                        -- BR-1
     KEY idx_members_group (group_id, status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T12 (append-only)
 CREATE TABLE group_member_histories (
@@ -221,7 +221,7 @@ CREATE TABLE group_member_histories (
     created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_gmh_group (group_id, created_at)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T13
 CREATE TABLE project_advisors (
@@ -240,7 +240,7 @@ CREATE TABLE project_advisors (
     PRIMARY KEY (id),
     UNIQUE KEY uq_group_one_advisor (group_id, active_key),
     KEY idx_advisors_advisor (advisor_id, status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T14
 CREATE TABLE projects (
@@ -259,7 +259,7 @@ CREATE TABLE projects (
     UNIQUE KEY uq_projects_group (group_id),
     UNIQUE KEY uq_projects_code (project_code),
     KEY idx_projects_offering (offering_id, stage)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T15
 CREATE TABLE project_topics (
@@ -278,7 +278,7 @@ CREATE TABLE project_topics (
     PRIMARY KEY (id),
     UNIQUE KEY uq_topics_one_current (project_id, current_key),
     KEY idx_topic_status (status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T16
 CREATE TABLE topic_submissions (
@@ -305,7 +305,7 @@ CREATE TABLE topic_submissions (
     updated_at        DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_topic_submissions_version (topic_id, version_no)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T17 (append-only)
 CREATE TABLE topic_approvals (
@@ -321,7 +321,7 @@ CREATE TABLE topic_approvals (
     UNIQUE KEY uq_topic_approvals_once (submission_id, level),
     KEY idx_topic_approvals_topic (topic_id, decided_at),
     CONSTRAINT chk_topic_approvals_comment CHECK (decision = 'approved' OR CHAR_LENGTH(TRIM(COALESCE(comments, ''))) > 0)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
 -- 9.3 Proposal, committee and evaluation
@@ -345,7 +345,7 @@ CREATE TABLE document_files (
     UNIQUE KEY uq_document_files_stored (stored_name),
     KEY idx_document_files_owner (owner_type, owner_id),
     KEY idx_document_files_sha (sha256)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T18
 CREATE TABLE proposal_submissions (
@@ -364,7 +364,7 @@ CREATE TABLE proposal_submissions (
     PRIMARY KEY (id),
     UNIQUE KEY uq_proposals_project (project_id),
     KEY idx_proposal_status (status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T19
 CREATE TABLE proposal_versions (
@@ -382,7 +382,7 @@ CREATE TABLE proposal_versions (
     submitted_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_proposal_versions_no (proposal_id, version_no)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T20
 CREATE TABLE committee_assignments (
@@ -407,7 +407,7 @@ CREATE TABLE committee_assignments (
     KEY idx_ca_member2 (member2_id, status),
     CONSTRAINT chk_ca_members_distinct CHECK (member1_id <> member2_id),
     CONSTRAINT chk_ca_average CHECK (average_score IS NULL OR average_score BETWEEN 0 AND 100)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T21
 CREATE TABLE evaluation_criteria (
@@ -424,7 +424,7 @@ CREATE TABLE evaluation_criteria (
     PRIMARY KEY (id),
     UNIQUE KEY uq_criteria_seq (offering_id, seq_no),
     CONSTRAINT chk_criteria_weight CHECK (weight > 0 AND weight <= 100)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T22
 CREATE TABLE committee_evaluations (
@@ -449,7 +449,7 @@ CREATE TABLE committee_evaluations (
     CONSTRAINT chk_ce_slot  CHECK (member_slot IN (1, 2)),
     CONSTRAINT chk_ce_score CHECK (total_score IS NULL OR total_score BETWEEN 0 AND 100),
     CONSTRAINT chk_ce_submitted CHECK (status <> 'submitted' OR (total_score IS NOT NULL AND recommendation IS NOT NULL AND submitted_at IS NOT NULL))
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T23
 CREATE TABLE evaluation_scores (
@@ -464,7 +464,7 @@ CREATE TABLE evaluation_scores (
     PRIMARY KEY (id),
     UNIQUE KEY uq_scores_criterion (evaluation_id, criterion_id),
     CONSTRAINT chk_scores_rating CHECK (rating BETWEEN 1 AND 5)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T24
 CREATE TABLE evaluation_comments (
@@ -477,7 +477,7 @@ CREATE TABLE evaluation_comments (
     updated_at    DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_comments_type (evaluation_id, comment_type)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T25 (append-only)
 CREATE TABLE approval_decisions (
@@ -509,7 +509,7 @@ CREATE TABLE approval_decisions (
         decision_level <> 'advisor_review' OR decision = 'ready_for_committee'
         OR CHAR_LENGTH(TRIM(COALESCE(comments, ''))) > 0
     )
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T26
 CREATE TABLE revision_requests (
@@ -529,7 +529,7 @@ CREATE TABLE revision_requests (
     PRIMARY KEY (id),
     UNIQUE KEY uq_revision_requests_decision (decision_id),
     KEY idx_revision_requests_proposal (proposal_id, status)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T27
 CREATE TABLE revision_responses (
@@ -543,7 +543,7 @@ CREATE TABLE revision_responses (
     PRIMARY KEY (id),
     UNIQUE KEY uq_revision_responses_version (new_version_id),
     KEY idx_revision_responses_request (revision_request_id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
 -- 9.4 Notifications, audit and settings
@@ -565,7 +565,7 @@ CREATE TABLE notifications (
     created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_notifications_user (user_id, is_read, created_at)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T30 (append-only)
 CREATE TABLE audit_logs (
@@ -585,7 +585,7 @@ CREATE TABLE audit_logs (
     KEY idx_audit_action (action),
     KEY idx_audit_entity (entity_type, entity_id),
     KEY idx_audit_created (created_at)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T31 (append-only)
 CREATE TABLE status_histories (
@@ -599,7 +599,7 @@ CREATE TABLE status_histories (
     changed_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_status_histories_entity (entity_type, entity_id, changed_at)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- T32
 CREATE TABLE system_settings (
@@ -612,7 +612,7 @@ CREATE TABLE system_settings (
     updated_at    DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_settings_key (setting_key)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
 

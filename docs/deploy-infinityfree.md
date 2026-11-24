@@ -106,6 +106,7 @@
 | หน้าเว็บไม่มีสี / ไม่มี CSS | ไม่ได้อัปโหลด `.htaccess` ที่ราก `htdocs` หรืออัปโหลดเป็น `htdocs/htdocs/...` |
 | เห็นรายการไฟล์หรือ 404 ทุกหน้า | ไฟล์ไม่ได้อยู่ระดับเดียวกับ `htdocs` ตามขั้นตอนที่ 4 |
 | Import แล้วขึ้น "Access denied" เรื่อง TRIGGER | import `schema.sql` ผิดไฟล์ ให้ใช้ `schema_shared_hosting.sql` |
+| ภาษาไทยจากฐานข้อมูลแสดงเป็น `???` | schema เวอร์ชันก่อน 24 พ.ย. 2569 ไม่ได้กำหนด utf8mb4 ให้ทุกตาราง (ฐานข้อมูลที่สร้างจาก Control Panel เป็น latin1) ให้ import `schema_shared_hosting.sql` และ `seed.sql` ชุดใหม่อีกครั้ง |
 
 ## ข้อจำกัดของโฮสต์ฟรี
 

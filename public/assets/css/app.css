@@ -5,7 +5,7 @@
     --ppms-green: #1f9d55;
     --ppms-green-dark: #177a42;
     --ppms-gray: #f3f5f8;
-    --ppms-sidebar-w: 260px;
+    --ppms-sidebar-w: 280px;
     --ppms-topbar-h: 56px;
     --bs-body-font-family: "Sarabun", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -23,6 +23,12 @@ body { background: var(--ppms-gray); font-family: var(--bs-body-font-family); fo
 .ppms-topbar { background: var(--ppms-navy); height: var(--ppms-topbar-h); }
 
 .ppms-sidebar { background: var(--ppms-navy-dark); color: #fff; }
+/* Bootstrap's .offcanvas-lg forces a transparent background from the lg breakpoint up;
+   keep the navy sidebar so its white text stays readable. */
+.ppms-sidebar.offcanvas-lg,
+.ppms-sidebar.offcanvas-lg .offcanvas-body { background-color: var(--ppms-navy-dark) !important; }
+.ppms-sidebar .nav-link { font-size: .95rem; line-height: 1.35; }
+.ppms-sidebar .badge-soon { font-size: .68rem; font-weight: 500; background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .7); }
 .ppms-sidebar .nav-link { color: rgba(255, 255, 255, .82); padding: .6rem 1rem; border-left: 3px solid transparent; }
 .ppms-sidebar .nav-link:hover { color: #fff; background: rgba(255, 255, 255, .06); }
 .ppms-sidebar .nav-link.active { color: #fff; background: rgba(255, 255, 255, .1); border-left-color: var(--ppms-green); }
@@ -41,6 +47,15 @@ body { background: var(--ppms-gray); font-family: var(--bs-body-font-family); fo
 .stat-card.stat-amber { border-top-color: #d9a400; }
 .stat-card.stat-red { border-top-color: #c0392b; }
 .stat-card .bi { color: var(--ppms-navy); opacity: .6; }
+.stat-card .stat-label { font-size: .9rem; line-height: 1.3; min-height: 2.6em; }
+
+/* Five stat cards per row on wide screens (10 cards = 2 even rows) */
+@media (min-width: 1200px) {
+    .col-xl-5th { flex: 0 0 auto; width: 20%; }
+}
+
+.chart-box { position: relative; height: 260px; }
+.chart-empty { height: 260px; display: flex; align-items: center; justify-content: center; color: #6c757d; background: var(--ppms-gray); border-radius: .5rem; }
 
 .ppms-auth-bg { background: linear-gradient(135deg, var(--ppms-navy-dark), var(--ppms-navy)); }
 

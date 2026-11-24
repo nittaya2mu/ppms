@@ -27,6 +27,15 @@ final class SchemaConstraintsTest extends DatabaseTestCase
         $this->assertSame('100.00', (string) $this->db->value('SELECT SUM(weight) FROM evaluation_criteria WHERE offering_id = 1'));
     }
 
+    public function testThaiTextRoundTripsEvenWhenDatabaseDefaultIsLatin1(): void
+    {
+        $this->assertSame(0, (int) $this->db->value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_collation <> 'utf8mb4_unicode_ci'"));
+        $this->assertSame('ผู้ดูแล', $this->db->value('SELECT first_name_th FROM users WHERE id = 1'));
+        $this->assertSame('การเตรียมความพร้อมโครงงาน', $this->db->value('SELECT name_th FROM courses WHERE id = 1'));
+        $id = $this->db->insert('notifications', ['user_id' => 1, 'event_type' => 't', 'title' => 'ทดสอบ 😀', 'message' => 'ภาษาไทย']);
+        $this->assertSame('ทดสอบ 😀', $this->db->value('SELECT title FROM notifications WHERE id = :id', ['id' => $id]));
+    }
+
     public function testStudentCannotBeInTwoActiveGroupsOfSameOffering(): void   // Section 4 BR-2
     {
         $this->fx->group('G1', 1, [2]);

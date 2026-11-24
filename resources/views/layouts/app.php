@@ -51,11 +51,11 @@ $menu = $menus[$activeRole] ?? [];
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/svg+xml" href="<?= e(asset('images/favicon.svg')) ?>">
     <title><?= e(($title ?? '') !== '' ? $title . ' · ' : '') ?>PPMS</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="<?= e(asset('vendor/sarabun/sarabun.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset('vendor/bootstrap/bootstrap.min.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset('vendor/bootstrap-icons/bootstrap-icons.min.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset('css/app.css')) ?>">
 </head>
 <body>
@@ -119,7 +119,7 @@ $menu = $menus[$activeRole] ?? [];
                     <?php if ($href === null): ?>
                         <span class="nav-link disabled" title="<?= e(__('menu.coming_soon')) ?>">
                             <i class="bi bi-<?= e($icon) ?>"></i> <?= e(__($label)) ?>
-                            <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1"><?= e(__('menu.coming_soon')) ?></span>
+                            <span class="badge badge-soon ms-1"><?= e(__('menu.coming_soon')) ?></span>
                         </span>
                     <?php else: ?>
                         <a class="nav-link <?= str_ends_with((string) $current, $href) || str_contains((string) $current, $href . '/') ? 'active' : '' ?>" href="<?= e(url($href)) ?>">
@@ -158,8 +158,8 @@ $menu = $menus[$activeRole] ?? [];
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="<?= e(asset('vendor/bootstrap/bootstrap.bundle.min.js')) ?>"></script>
+<script src="<?= e(asset('vendor/chartjs/chart.umd.min.js')) ?>"></script>
 <script src="<?= e(asset('js/app.js')) ?>"></script>
 </body>
 </html>

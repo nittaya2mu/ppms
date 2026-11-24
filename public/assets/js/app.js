@@ -30,6 +30,7 @@
 
     // Bar charts from data-chart='{"labels":[...],"values":[...]}'
     if (window.Chart) {
+        Chart.defaults.font.family = "'Sarabun', system-ui, sans-serif";
         document.querySelectorAll('canvas.js-bar-chart').forEach(function (canvas) {
             let data;
             try { data = JSON.parse(canvas.dataset.chart); } catch (e) { return; }

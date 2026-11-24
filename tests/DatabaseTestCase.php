@@ -41,7 +41,9 @@ abstract class DatabaseTestCase extends TestCase
             [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
         );
         $pdo->exec("DROP DATABASE IF EXISTS `$testDb`");
-        $pdo->exec("CREATE DATABASE `$testDb` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        // Deliberately latin1: shared hosts (InfinityFree) create databases with a latin1 default,
+        // so every table must declare utf8mb4 itself or Thai text is lost.
+        $pdo->exec("CREATE DATABASE `$testDb` CHARACTER SET latin1");
         $pdo->exec("USE `$testDb`");
 
         $schema = self::schemaMode() === 'shared' ? 'schema_shared_hosting.sql' : 'schema.sql';

@@ -29,11 +29,11 @@ $chartData = [
 
 <div class="row g-3 mb-4">
     <?php foreach ($cards as [$key, $icon, $tone]): ?>
-        <div class="col-6 col-md-4 col-xl">
+        <div class="col-6 col-md-4 col-xl-5th">
             <div class="card stat-card stat-<?= e($tone) ?> h-100">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between">
-                        <span class="small text-secondary"><?= e(__('dash.' . $key)) ?></span>
+                    <div class="d-flex justify-content-between gap-2">
+                        <span class="stat-label text-secondary"><?= e(__('dash.' . $key)) ?></span>
                         <i class="bi bi-<?= e($icon) ?>"></i>
                     </div>
                     <div class="fs-3 fw-semibold"><?= (int) $stats[$key] ?></div>
@@ -46,11 +46,19 @@ $chartData = [
 <div class="row g-3 mb-4">
     <div class="col-lg-6"><div class="card h-100"><div class="card-body">
         <h2 class="h6"><?= e(__('dash.topic_chart')) ?></h2>
-        <canvas class="js-bar-chart" height="220" data-chart="<?= e(json_encode($chartData['topic'], JSON_UNESCAPED_UNICODE)) ?>"></canvas>
+        <?php if (array_sum($chartData['topic']['values']) === 0): ?>
+            <div class="chart-empty"><?= e(__('dash.chart_empty')) ?></div>
+        <?php else: ?>
+            <div class="chart-box"><canvas class="js-bar-chart" data-chart="<?= e(json_encode($chartData['topic'], JSON_UNESCAPED_UNICODE)) ?>"></canvas></div>
+        <?php endif; ?>
     </div></div></div>
     <div class="col-lg-6"><div class="card h-100"><div class="card-body">
         <h2 class="h6"><?= e(__('dash.proposal_chart')) ?></h2>
-        <canvas class="js-bar-chart" height="220" data-chart="<?= e(json_encode($chartData['proposal'], JSON_UNESCAPED_UNICODE)) ?>"></canvas>
+        <?php if (array_sum($chartData['proposal']['values']) === 0): ?>
+            <div class="chart-empty"><?= e(__('dash.chart_empty')) ?></div>
+        <?php else: ?>
+            <div class="chart-box"><canvas class="js-bar-chart" data-chart="<?= e(json_encode($chartData['proposal'], JSON_UNESCAPED_UNICODE)) ?>"></canvas></div>
+        <?php endif; ?>
     </div></div></div>
 </div>
 
