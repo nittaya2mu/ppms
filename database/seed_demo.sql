@@ -1,6 +1,8 @@
 -- =============================================================================
 -- PPMS demo data (OPTIONAL, for development and the acceptance test only).
 -- Do NOT load on a production server.
+-- On a server that already has real accounts, use database/demo_accounts.sql instead
+-- (no fixed ids, safe to re-run).
 --   mysql -u root -p ppms < database/seed_demo.sql
 --
 -- All demo accounts use password: Demo@1234 (no forced change)
