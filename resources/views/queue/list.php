@@ -1,7 +1,8 @@
 <?php
 /** @var string $titleKey @var string $kind @var array $rows @var string $anchor @var ?string $help @var ?array $secondary @var ?string $secondaryTitle */
 $this->layout('layouts/app', ['title' => __($titleKey)]);
-$table = function (array $rows) use ($kind, $anchor) {
+$table = function (array $rows, ?string $anchor = null, ?string $kindOverride = null) use ($kind) {
+    $kind = $kindOverride ?? $kind;
     ob_start(); ?>
     <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
         <thead class="table-light"><tr><th>Project</th><th>กลุ่ม</th><th>หัวข้อ</th><th>Version</th><th>ส่งเมื่อ</th><?php if ($kind === 'proposal'): ?><th>S<sub>avg</sub></th><?php endif; ?><th><?= e(__('common.status')) ?></th></tr></thead>
@@ -25,8 +26,8 @@ $table = function (array $rows) use ($kind, $anchor) {
 ?>
 <h1 class="h4 mb-1"><?= e(__($titleKey)) ?></h1>
 <?php if ($help): ?><p class="text-secondary small"><?= e($help) ?></p><?php endif; ?>
-<?= $table($rows) ?>
+<?= $table($rows, $anchor) ?>
 <?php if ($secondary !== null): ?>
     <h2 class="h6 mt-4"><?= e($secondaryTitle) ?></h2>
-    <?= $table($secondary) ?>
+    <?= $table($secondary, $secondaryAnchor ?? $anchor, 'chapter') ?>
 <?php endif; ?>

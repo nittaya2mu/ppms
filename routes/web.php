@@ -67,6 +67,8 @@ $router->group('', ['auth', 'password'], function (Router $r) {
     $r->get('/projects/{id}', [ProjectController::class, 'show']);
     $r->get('/projects/{id}/summary', [ProjectController::class, 'summary']);
     $r->get('/projects/{id}/topic/print', [ProjectController::class, 'topicPrint']);
+    $r->get('/projects/{id}/proposal/print', [ProjectController::class, 'proposalPrint']);
+    $r->post('/projects/{id}/chapters/{review}/review', [ProjectController::class, 'reviewChapter'], ['role:advisor', 'csrf']);
     $r->get('/projects/{id}/progress', [ProjectFormsController::class, 'progress']);
     $r->get('/projects/{id}/progress/print', [ProjectFormsController::class, 'progressPrint']);
     $r->get('/projects/{id}/scope', [ProjectFormsController::class, 'scope']);

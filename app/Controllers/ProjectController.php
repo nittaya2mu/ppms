@@ -15,6 +15,7 @@ use App\Services\EvaluationService;
 use App\Services\FileService;
 use App\Services\FormService;
 use App\Services\GroupService;
+use App\Services\ProposalDraftService;
 use App\Services\ProposalService;
 use App\Services\Rules\RuleViolation;
 use App\Services\SettingsService;
@@ -69,6 +70,12 @@ final class ProjectController extends Controller
                 'proposal' => $proposal,
                 'versions' => ProposalService::versions((int) $proposal['id']),
                 'latest' => ProposalService::latestVersion((int) $proposal['id']),
+                'draft' => ProposalDraftService::get($pid),
+                'chapterReviews' => ProposalDraftService::reviews($pid),
+                'chapterHistory' => ProposalDraftService::history($pid),
+                'targetVersion' => ProposalDraftService::targetVersion($pid),
+                'reviewRequired' => ProposalDraftService::reviewRequired(),
+                'submitBlocker' => ProposalDraftService::submitBlocker($pid),
                 'decisions' => ProposalService::decisions((int) $proposal['id']),
                 'assignments' => $assignments,
                 'summaries' => $summaries,
@@ -87,6 +94,7 @@ final class ProjectController extends Controller
             'rejectedTopics' => TopicService::rejectedTopics($pid),
             'proposalView' => $proposalView,
             'isLeader' => $role === 'student' && AccessPolicy::isLeader($groupId),
+            'isMember' => $role === 'student' && AccessPolicy::isMember($groupId),
             'isAdvisor' => $role === 'advisor' && AccessPolicy::isAdvisor($groupId),
             'committeeChoices' => $role === 'admin' ? ProposalService::committeeChoices() : [],
             'chapterMaxMb' => FileService::maxMb('upload.chapter_max_mb'),
@@ -149,13 +157,62 @@ final class ProjectController extends Controller
 
     // ----- Proposal -----------------------------------------------------------
 
+    /** Step 3: save the draft, send a chapter to the advisor, or submit the proposal. */
     public function submitProposal(Request $r): Response
     {
-        $pid = $this->leaderProject($r);
-        return $this->attempt($r, "/projects/$pid", function () use ($pid, $r) {
-            $files = [1 => $r->file('chapter1'), 2 => $r->file('chapter2'), 3 => $r->file('chapter3')];
-            ProposalService::submit($pid, $r->all(), $files, $r->file('response_doc'), (string) $r->input('revision_notes'), $this->userId());
-        }, __('proposals.submitted'));
+        $pid = $this->id($r);
+        if ($this->role() !== 'student' || !AccessPolicy::isMember(AccessPolicy::groupOfProject($pid))) {
+            throw HttpException::forbidden();
+        }
+        $do = (string) $r->input('do', 'save');
+        $uploads = [1 => $r->file('chapter1'), 2 => $r->file('chapter2'), 3 => $r->file('chapter3')];
+        $messages = ['save' => __('chapters.saved'), 'submit' => __('proposals.submitted')];
+        return $this->attempt($r, "/projects/$pid#chapters", function () use ($pid, $r, $do, $uploads) {
+            ProposalDraftService::save($pid, $this->userId(), $r->all(), $uploads);
+            if (preg_match('/^send_([123])$/', $do, $m)) {
+                ProposalDraftService::sendChapter($pid, (int) $m[1], $this->userId());
+            } elseif ($do === 'submit') {
+                if (!AccessPolicy::isLeader(AccessPolicy::groupOfProject($pid))) {
+                    throw new RuleViolation('not_leader', 'Only the group leader submits');
+                }
+                ProposalDraftService::submit($pid, $this->userId(), $r->file('response_doc'), (string) $r->input('revision_notes'));
+            }
+        }, $messages[$do] ?? __('chapters.sent'));
+    }
+
+    /** The advisor approves or returns one chapter. */
+    public function reviewChapter(Request $r): Response
+    {
+        $pid = $this->id($r);
+        if (!AccessPolicy::isAdvisor(AccessPolicy::groupOfProject($pid))) {
+            throw HttpException::forbidden();
+        }
+        $rid = $this->id($r, 'review');
+        if ((int) Database::connection()->value('SELECT project_id FROM proposal_chapter_reviews WHERE id = :id', ['id' => $rid]) !== $pid) {
+            throw HttpException::notFound();
+        }
+        return $this->attempt($r, "/projects/$pid#chapters", fn () => ProposalDraftService::reviewChapter($rid, $this->userId(), (string) $r->input('decision'), (string) $r->input('comments')), __('common.decision_saved'));
+    }
+
+    /** Printable proposal (chapters 1-3) in the department layout: ?version=N or the draft. */
+    public function proposalPrint(Request $r): Response
+    {
+        $pid = $this->id($r);
+        AccessPolicy::authorizeGroup(AccessPolicy::groupOfProject($pid));
+        $ctx = FormService::context($pid);
+        $versionNo = (int) $r->query('version', 0);
+        if ($versionNo > 0 && $ctx['proposal']) {
+            $v = Database::connection()->fetch('SELECT * FROM proposal_versions WHERE proposal_id = :p AND version_no = :n', ['p' => (int) $ctx['proposal']['id'], 'n' => $versionNo]) ?? throw HttpException::notFound();
+            $content = ProposalDraftService::fromVersion($v);
+            $label = 'Proposal v' . $versionNo;
+        } else {
+            if (!in_array($this->role(), ['student', 'advisor', 'admin'], true)) {
+                throw HttpException::forbidden();
+            }
+            $content = ProposalDraftService::get($pid)['content'];
+            $label = __('chapters.draft_label');
+        }
+        return $this->view('forms/proposal', $ctx + ['content' => $content, 'label' => $label]);
     }
 
     public function proposalAdvisorDecision(Request $r): Response

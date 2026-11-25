@@ -80,3 +80,15 @@ body { background: var(--ppms-gray); font-family: var(--bs-body-font-family); fo
     .ppms-print .container { max-width: 100%; }
     .ppms-page-block { break-inside: avoid; page-break-inside: avoid; }
 }
+
+/* Proposal chapters (B_05 layout) */
+.ppms-doc { max-width: 21cm; margin: 0 auto; font-size: 16px; line-height: 1.7; }
+.ppms-chapter { margin-bottom: 2.5rem; }
+.ppms-chapter-no, .ppms-chapter-title { text-align: center; font-weight: 700; font-size: 20px; }
+.ppms-chapter-title { margin-bottom: 1.2rem; }
+.ppms-sec { font-size: 18px; font-weight: 700; margin: 1rem 0 .4rem; }
+.ppms-para { text-indent: 1.27cm; text-align: justify; margin-bottom: .4rem; }
+@media print {
+    .ppms-chapter { break-before: page; page-break-before: always; }
+    .ppms-chapter:first-child { break-before: auto; page-break-before: auto; }
+}

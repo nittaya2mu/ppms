@@ -26,7 +26,8 @@ $fmt = fn (float $n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
         <?php endforeach; ?>
     </div>
     <?php if (!empty($version['ch1_background'])): ?>
-        <details class="mt-2"><summary class="small fw-semibold"><?= e(__('proposals.chapter1')) ?></summary><?= $this->partial('projects/_chapter1', ['v' => $version]) ?></details>
+        <details class="mt-2"><summary class="small fw-semibold"><?= e(__('chapters.content_web')) ?></summary><?= $this->partial('projects/_chapters', ['content' => \App\Services\ProposalDraftService::fromVersion($version)]) ?></details>
+        <a class="small" href="<?= e(url('/projects/' . (int) $ev['project_id'] . '/proposal/print?version=' . (int) $ev['version_no'])) ?>" target="_blank" rel="noopener"><i class="bi bi-printer"></i> <?= e(__('chapters.print')) ?></a>
     <?php endif; ?>
 </div></div>
 

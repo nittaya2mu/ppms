@@ -134,6 +134,9 @@ final class AccessPolicy
                 $groupId = $row['group_id'] ?? null;
                 $proposalId = $row['proposal_id'] ?? null;
                 break;
+            case 'proposal_draft':
+                $groupId = $db->value('SELECT group_id FROM projects WHERE id = :id', ['id' => (int) $file['owner_id']]);
+                break;
             case 'revision_response':
                 $row = $db->fetch(
                     'SELECT p.group_id, rr.proposal_id FROM revision_responses rs JOIN revision_requests rr ON rr.id = rs.revision_request_id

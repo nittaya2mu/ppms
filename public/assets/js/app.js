@@ -97,6 +97,23 @@
         recalcPres();
     }
 
+    // Proposal chapters 2-3: add a numbered section from a <template>.
+    const renumber = function (box) {
+        box.querySelectorAll('.js-section-no').forEach(function (el, i) { el.textContent = String(i + 1); });
+    };
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.js-add-section');
+        if (!btn) { return; }
+        const box = document.getElementById(btn.dataset.target);
+        const tpl = document.getElementById(btn.dataset.template);
+        if (!box || !tpl) { return; }
+        if (box.querySelectorAll('.js-section').length >= parseInt(btn.dataset.max || '15', 10)) { return; }
+        box.appendChild(tpl.content.cloneNode(true));
+        renumber(box);
+        const inputs = box.querySelectorAll('.js-section input');
+        if (inputs.length) { inputs[inputs.length - 1].focus(); }
+    });
+
     // Scope form (แบบฟอร์ม 7): live weight total.
     const scopeTotal = document.getElementById('scopeTotal');
     if (scopeTotal) {

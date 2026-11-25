@@ -115,8 +115,11 @@ final class ProposalService
      * @param array<int,?array> $files chapter number (1..3) => uploaded file; on resubmission a missing
      *                                  chapter keeps the file of the previous version
      * @param array|null $response response-to-comments document (required on resubmission)
+     * @param array{ch2_json?:string, ch3_json?:string} $extra chapters 2-3 typed on the web (JSON)
+     *
+     * A $files entry may also be the id of an already stored file (from the proposal draft).
      */
-    public static function submit(int $projectId, array $chapter1, array $files, ?array $response, ?string $notes, int $userId): int
+    public static function submit(int $projectId, array $chapter1, array $files, ?array $response, ?string $notes, int $userId, array $extra = []): int
     {
         $proposal = self::forProject($projectId) ?? throw new RuleViolation('topic_not_approved', 'The topic must be officially approved first');
         $project = Database::connection()->fetch('SELECT * FROM projects WHERE id = :p', ['p' => $projectId]);
@@ -133,7 +136,7 @@ final class ProposalService
         }
         $previous = self::latestVersion((int) $proposal['id']);
         foreach (self::CHAPTER_FILES as $ch => $col) {
-            $has = isset($files[$ch]) && (int) ($files[$ch]['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+            $has = isset($files[$ch]) && (is_int($files[$ch]) || (int) ($files[$ch]['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE);
             if (!$has && empty($previous[$col])) {
                 throw new RuleViolation('chapter_files_required', 'Chapter 1-3 documents are required');
             }
@@ -147,12 +150,16 @@ final class ProposalService
         $allowed = is_array($allowed) ? $allowed : ['pdf'];
 
         $db = Database::connection();
-        return $db->transaction(function (Database $db) use ($proposal, $project, $text, $files, $previous, $allowed, $response, $notes, $userId, $isResubmission, $revision, $late) {
+        $extra = array_intersect_key($extra, ['ch2_json' => 1, 'ch3_json' => 1]);
+        return $db->transaction(function (Database $db) use ($proposal, $project, $text, $files, $previous, $allowed, $response, $notes, $userId, $isResubmission, $revision, $late, $extra) {
             $fileIds = [];
             $fresh = [];
             foreach (self::CHAPTER_FILES as $ch => $col) {
                 $upload = $files[$ch] ?? null;
-                if ($upload !== null && (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                if (is_int($upload)) {
+                    $fileIds[$col] = $upload;
+                    $fresh[] = $upload;
+                } elseif ($upload !== null && (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                     $fileIds[$col] = FileService::store($upload, 'proposal_version', null, $allowed, 'upload.chapter_max_mb', $userId);
                     $fresh[] = $fileIds[$col];
                 } else {
@@ -161,7 +168,7 @@ final class ProposalService
             }
             $versionNo = 1 + (int) $db->value('SELECT COALESCE(MAX(version_no), 0) FROM proposal_versions WHERE proposal_id = :p', ['p' => (int) $proposal['id']]);
             $db->query("UPDATE proposal_versions SET version_status = 'superseded' WHERE proposal_id = :p AND version_status <> 'superseded'", ['p' => (int) $proposal['id']]);
-            $vid = $db->insert('proposal_versions', $text + $fileIds + [
+            $vid = $db->insert('proposal_versions', $text + $fileIds + $extra + [
                 'proposal_id' => (int) $proposal['id'], 'version_no' => $versionNo,
                 'title' => (string) ($project['title_th'] ?: $project['title_en'] ?: $project['project_code']),
                 'revision_notes' => trim((string) $notes) ?: null,

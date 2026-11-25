@@ -18,6 +18,7 @@ SET time_zone = '+07:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS
+    proposal_chapter_reviews, proposal_drafts,
     scope_approvals, scope_submissions, progress_reports, presentation_evaluations,
     system_settings, status_histories, audit_logs, notifications,
     revision_responses, revision_requests, approval_decisions,
@@ -372,7 +373,7 @@ CREATE TABLE topic_approvals (
 -- T28 (created early: referenced by proposal_versions and revision_responses)
 CREATE TABLE document_files (
     id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    owner_type    ENUM('topic_submission','proposal_version','revision_response','other') NOT NULL,
+    owner_type    ENUM('topic_submission','proposal_version','revision_response','proposal_draft','other') NOT NULL,
     owner_id      BIGINT UNSIGNED NULL,
     original_name VARCHAR(255) NOT NULL,
     stored_name   CHAR(40)     NOT NULL,
@@ -426,6 +427,8 @@ CREATE TABLE proposal_versions (
     ch1_plan           TEXT NULL,
     ch2_file_id        BIGINT UNSIGNED NULL,
     ch3_file_id        BIGINT UNSIGNED NULL,
+    ch2_json           MEDIUMTEXT NULL,
+    ch3_json           MEDIUMTEXT NULL,
     revision_notes     TEXT NULL,
     version_status     ENUM('submitted','under_advisor_review','returned','accepted_for_evaluation',
                             'evaluated','superseded') NOT NULL DEFAULT 'submitted',
@@ -785,6 +788,45 @@ CREATE TABLE scope_approvals (
     UNIQUE KEY uq_scope_role (scope_id, approver_role),
     CONSTRAINT fk_sa_scope    FOREIGN KEY (scope_id)    REFERENCES scope_submissions (id),
     CONSTRAINT fk_sa_approver FOREIGN KEY (approver_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T37 Working copy of the next proposal version (chapters 1-3 typed on the web + chapter files)
+CREATE TABLE proposal_drafts (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    project_id   BIGINT UNSIGNED NOT NULL,
+    content_json MEDIUMTEXT NOT NULL,
+    ch1_file_id  BIGINT UNSIGNED NULL,
+    ch2_file_id  BIGINT UNSIGNED NULL,
+    ch3_file_id  BIGINT UNSIGNED NULL,
+    updated_by   BIGINT UNSIGNED NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_proposal_drafts_project (project_id),
+    CONSTRAINT fk_pd_project FOREIGN KEY (project_id) REFERENCES projects (id),
+    CONSTRAINT fk_pd_user    FOREIGN KEY (updated_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T38 Chapter-by-chapter review by the advisor before the proposal is submitted
+CREATE TABLE proposal_chapter_reviews (
+    id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    project_id     BIGINT UNSIGNED NOT NULL,
+    chapter        TINYINT UNSIGNED NOT NULL,
+    target_version SMALLINT UNSIGNED NOT NULL,
+    content_json   MEDIUMTEXT NOT NULL,
+    file_id        BIGINT UNSIGNED NOT NULL,
+    status         ENUM('submitted','approved','revision_required') NOT NULL DEFAULT 'submitted',
+    submitted_by   BIGINT UNSIGNED NOT NULL,
+    submitted_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by    BIGINT UNSIGNED NULL,
+    reviewed_at    DATETIME NULL,
+    comments       TEXT NULL,
+    PRIMARY KEY (id),
+    KEY idx_pcr_project (project_id, target_version, chapter),
+    CONSTRAINT fk_pcr_project  FOREIGN KEY (project_id)   REFERENCES projects (id),
+    CONSTRAINT fk_pcr_file     FOREIGN KEY (file_id)      REFERENCES document_files (id),
+    CONSTRAINT fk_pcr_student  FOREIGN KEY (submitted_by) REFERENCES users (id),
+    CONSTRAINT fk_pcr_reviewer FOREIGN KEY (reviewed_by)  REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

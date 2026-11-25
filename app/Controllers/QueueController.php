@@ -66,7 +66,15 @@ final class QueueController extends Controller
     {
         $this->allow(['advisor']);
         $rows = ProposalService::queue((int) $this->offering()['id'], 'advisor', $this->userId(), 'pending_advisor');
-        return $this->list('menu.advisor_review', 'proposal', $rows, '#proposal', __('queue.advisor_review_help'));
+        $chapters = \App\Services\ProposalDraftService::pendingForAdvisor((int) $this->offering()['id'], $this->userId());
+        foreach ($chapters as &$c) {
+            $c['title_th'] = $c['chapter_label'] . ' · ' . ($c['title_th'] ?? '');
+        }
+        unset($c);
+        return $this->view('queue/list', [
+            'titleKey' => 'menu.advisor_review', 'kind' => 'proposal', 'rows' => $rows, 'anchor' => '#proposal', 'help' => __('queue.advisor_review_help'),
+            'secondary' => $chapters, 'secondaryTitle' => __('chapters.queue_title'), 'secondaryAnchor' => '#chapters',
+        ]);
     }
 
     public function committeeAssignment(Request $r): Response

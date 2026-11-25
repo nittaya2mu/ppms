@@ -192,35 +192,7 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
             <?php if ($pv['revision']['due_at']): ?><div class="small"><?= e(__('proposals.revision_due')) ?>: <?= e(thai_date($pv['revision']['due_at'], true)) ?></div><?php endif; ?></div>
     <?php endif; ?>
 
-    <?php if ($isLeader && in_array($status, ['draft', 'revision_required', 'approved_minor'], true)): $resub = $status !== 'draft'; $prev = $pv['latest']; ?>
-        <form method="post" enctype="multipart/form-data" action="<?= e(url("$base/proposal")) ?>" class="border rounded p-3 mb-3" data-confirm="<?= e(__('proposals.submit_confirm')) ?>">
-            <?= csrf_field() ?>
-            <h3 class="h6"><?= e($resub ? __('proposals.resubmit') : __('proposals.submit')) ?></h3>
-            <p class="small text-secondary"><?= e(__('proposals.chapter1_help')) ?></p>
-            <h4 class="h6 mt-2"><?= e(__('proposals.chapter1')) ?></h4>
-            <div class="row g-2">
-                <?php foreach (ProposalService::CHAPTER1 as $i => $k): ?>
-                    <div class="col-12"><label class="form-label small fw-semibold" for="<?= e($k) ?>">1.<?= $i + 1 ?> <?= e(__('chapter1.' . $k)) ?> <span class="text-danger">*</span></label>
-                        <textarea class="form-control" rows="<?= $k === 'ch1_background' ? 6 : 4 ?>" id="<?= e($k) ?>" name="<?= e($k) ?>"><?= e(old($k, $prev[$k] ?? '')) ?></textarea></div>
-                <?php endforeach; ?>
-            </div>
-            <h4 class="h6 mt-3"><?= e(__('proposals.chapter_files')) ?> <span class="small text-secondary fw-normal">(PDF / DOCX ≤ <?= (int) $chapterMaxMb ?> MB)</span></h4>
-            <div class="row g-2">
-                <?php foreach (ProposalService::CHAPTER_FILES as $ch => $col): $hasPrev = !empty($prev[$col]); ?>
-                    <div class="col-md-4"><label class="form-label small fw-semibold"><?= e(__('proposals.chapter_n', ['n' => $ch])) ?><?= $hasPrev ? '' : ' <span class="text-danger">*</span>' ?></label>
-                        <input type="file" class="form-control" name="chapter<?= $ch ?>" accept=".pdf,.docx,.doc" <?= $hasPrev ? '' : 'required' ?>>
-                        <?php if ($hasPrev): ?><div class="form-text"><?= e(__('proposals.keep_previous')) ?></div><?php endif; ?></div>
-                <?php endforeach; ?>
-                <?php if ($resub): ?>
-                    <div class="col-md-6"><label class="form-label small fw-semibold"><?= e(__('proposals.response_doc')) ?> (PDF/DOCX) <span class="text-danger">*</span></label>
-                        <input type="file" class="form-control" name="response_doc" accept=".pdf,.docx" required></div>
-                <?php endif; ?>
-                <div class="col-12"><label class="form-label small fw-semibold"><?= e(__('proposals.revision_notes')) ?></label>
-                    <textarea class="form-control" rows="2" name="revision_notes"><?= e(old('revision_notes')) ?></textarea></div>
-            </div>
-            <button class="btn btn-ppms mt-3"><i class="bi bi-upload"></i> <?= e(__('proposals.upload_submit')) ?></button>
-        </form>
-    <?php endif; ?>
+    <?= $this->partial('projects/_proposal_draft', ['pv' => $pv, 'status' => $status, 'isMember' => $isMember, 'isLeader' => $isLeader, 'isAdvisor' => $isAdvisor, 'base' => $base, 'chapterMaxMb' => $chapterMaxMb, 'fileLink' => $file]) ?>
 
     <?php if ($pv['versions']): ?>
         <div class="table-responsive"><table class="table table-sm small align-middle">
@@ -233,12 +205,12 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
                         <?php if ($v['response_file_id']): ?><br><?= $file((int) $v['response_file_id'], __('proposals.response_doc')) ?><?php endif; ?></td>
                     <td><?= e(thai_date($v['submitted_at'], true)) ?> <?= (int) $v['is_late'] === 1 ? '<span class="badge text-bg-warning">late</span>' : '' ?></td>
                     <td><?= e(__('version_status.' . $v['version_status'])) ?></td>
-                    <td><?= nl2br(e($v['revision_notes'])) ?></td></tr>
+                    <td><?= nl2br(e($v['revision_notes'])) ?><?php if (!empty($v['ch1_background'])): ?><div><a class="small" href="<?= e(url("$base/proposal/print?version=" . (int) $v['version_no'])) ?>"><i class="bi bi-printer"></i> <?= e(__('chapters.print')) ?></a></div><?php endif; ?></td></tr>
             <?php endforeach; ?></tbody>
         </table></div>
         <?php $cur = $pv['versions'][0]; if (!empty($cur['ch1_background'])): ?>
-            <details class="mb-3"><summary class="small fw-semibold"><?= e(__('proposals.chapter1')) ?> (v<?= (int) $cur['version_no'] ?>)</summary>
-                <?= $this->partial('projects/_chapter1', ['v' => $cur]) ?></details>
+            <details class="mb-3"><summary class="small fw-semibold"><?= e(__('chapters.content_of', ['v' => (int) $cur['version_no']])) ?></summary>
+                <?= $this->partial('projects/_chapters', ['content' => \App\Services\ProposalDraftService::fromVersion($cur)]) ?></details>
         <?php endif; ?>
     <?php endif; ?>
 

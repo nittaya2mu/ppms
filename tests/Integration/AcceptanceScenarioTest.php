@@ -12,6 +12,8 @@ use App\Services\GroupService;
 use App\Services\OfferingService;
 use App\Services\PresentationForm;
 use App\Services\ProgressService;
+use App\Services\ProposalDraftService;
+use App\Services\SettingsService;
 use App\Services\ScopeService;
 use App\Services\ProposalService;
 use App\Services\Rules\RuleViolation;
@@ -237,6 +239,64 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         $this->assertSame('95.83', (string) $summary['committee']['assignment']['average_score']);
         $this->assertSame(3, count($summary['committee']['evaluations']));
         $this->assertSame(1, (int) $this->db->value('SELECT COUNT(*) FROM approval_decisions WHERE differs_from_committee = 1'));
+    }
+
+    /** Step 3: draft, chapters 2-3 typed on the web, chapter-by-chapter advisor review, submission. */
+    public function testProposalDraftAndChapterReview(): void
+    {
+        [, $pid] = $this->registeredGroup();
+        $this->approvedTopic($pid);
+        $ch23 = [
+            'ch2_title' => 'ทฤษฎีและงานวิจัยที่เกี่ยวข้อง', 'ch2_heading' => ['ทฤษฎีที่เกี่ยวข้อง', '', 'งานวิจัยที่เกี่ยวข้อง'], 'ch2_content' => ['CNN', '', 'YOLO'],
+            'ch3_title' => 'วิธีการดำเนินงาน', 'ch3_heading' => ['ภาพรวมของระบบ'], 'ch3_content' => ['สถาปัตยกรรม'],
+        ];
+        // Any member may save the draft; empty sections are dropped.
+        $draft = ProposalDraftService::save($pid, 202, ['ch1_background' => 'ที่มา'], []);
+        $this->assertSame('ที่มา', $draft['content']['ch1']['ch1_background']);
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::save($pid, 205, [], []), 'members');
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::sendChapter($pid, 1, 201), 'incomplete');
+        $draft = ProposalDraftService::save($pid, 201, $this->chapter1('d1') + $ch23, [1 => $this->pdf('c1'), 2 => $this->pdf('c2'), 3 => $this->pdf('c3')]);
+        $this->assertSame(2, count($draft['content']['ch2']['sections']));
+        $this->assertSame('chapters_not_approved', ProposalDraftService::submitBlocker($pid));
+
+        // Chapter 1: leader sends, advisor returns it, leader resends, advisor approves.
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::sendChapter($pid, 1, 202), 'leader');
+        $r1 = ProposalDraftService::sendChapter($pid, 1, 201);
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::sendChapter($pid, 1, 201), 'waiting');
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::reviewChapter($r1, 102, 'approve', null), 'advisor');
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::reviewChapter($r1, self::ADVISOR, 'revise', ''));
+        ProposalDraftService::reviewChapter($r1, self::ADVISOR, 'revise', 'ขยายวัตถุประสงค์');
+        ProposalDraftService::save($pid, 201, ['ch1_objectives' => 'วัตถุประสงค์ที่ขยายแล้ว'], []);
+        $r1b = ProposalDraftService::sendChapter($pid, 1, 201);
+        ProposalDraftService::reviewChapter($r1b, self::ADVISOR, 'approve', null);
+        ProposalDraftService::reviewChapter(ProposalDraftService::sendChapter($pid, 2, 201), self::ADVISOR, 'approve', 'ดี');
+        ProposalDraftService::reviewChapter(ProposalDraftService::sendChapter($pid, 3, 201), self::ADVISOR, 'approve', null);
+        $this->assertTrue(ProposalDraftService::submitBlocker($pid) === null);
+
+        // A later draft edit is not part of the submission until re-approved.
+        ProposalDraftService::save($pid, 201, ['ch1_objectives' => 'แก้หลังอนุมัติ'], []);
+        $vid = ProposalDraftService::submit($pid, 201, null, null);
+        $v = $this->db->fetch('SELECT * FROM proposal_versions WHERE id = :v', ['v' => $vid]);
+        $this->assertSame('วัตถุประสงค์ที่ขยายแล้ว', $v['ch1_objectives']);
+        $this->assertSame('YOLO', json_decode($v['ch2_json'], true)['sections'][1]['content']);
+        $this->assertSame('proposal_version', $this->db->value('SELECT owner_type FROM document_files WHERE id = :f', ['f' => (int) $v['ch3_file_id']]));
+        $this->assertSame('submitted', $this->proposalStatus($pid));
+        $this->assertSame(2, ProposalDraftService::targetVersion($pid));
+        $this->assertThrows(RuleViolation::class, fn () => ProposalDraftService::save($pid, 201, [], []), 'edited');   // locked while under review
+    }
+
+    public function testProposalSubmitWithoutChapterReviewWhenDisabled(): void
+    {
+        $this->db->query("UPDATE system_settings SET setting_value = 'false' WHERE setting_key = 'proposal.chapter_review_required'");
+        SettingsService::flush();
+        [, $pid] = $this->registeredGroup();
+        $this->approvedTopic($pid);
+        ProposalDraftService::save($pid, 201, $this->chapter1() + ['ch2_heading' => ['ทฤษฎี'], 'ch2_content' => ['x'], 'ch3_heading' => ['วิธี'], 'ch3_content' => ['y']],
+            [1 => $this->pdf('a'), 2 => $this->pdf('b'), 3 => $this->pdf('c')]);
+        $this->assertTrue(ProposalDraftService::submitBlocker($pid) === null);
+        ProposalDraftService::submit($pid, 201, null, 'ส่ง');
+        $this->assertSame('submitted', $this->proposalStatus($pid));
+        SettingsService::flush();
     }
 
     public function testProgressReportsAndScopeApproval(): void

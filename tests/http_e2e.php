@@ -193,9 +193,47 @@ $ch1 = [];
 foreach (['ch1_background', 'ch1_objectives', 'ch1_scope', 'ch1_benefits', 'ch1_tools', 'ch1_plan'] as $k) {
     $ch1[$k] = "บทที่ 1 $k";
 }
-$s1->post("/projects/$pid/proposal", $ch1 + ['chapter1' => pdfFile('ch1'), 'revision_notes' => ''], true);
-check(str_contains($s1->body, 'alert-danger') || str_contains($s1->body, 'บทที่ 1, 2 และ 3'), 'proposal without chapter 2-3 refused');
-$s1->post("/projects/$pid/proposal", $ch1 + ['chapter1' => pdfFile('ch1'), 'chapter2' => pdfFile('ch2'), 'chapter3' => pdfFile('ch3'), 'revision_notes' => ''], true);
+$s2->get("/projects/$pid");
+check(str_contains($s2->body, 'id="chapters"') && str_contains($s2->body, 'name="ch2_heading[]"'), 'member sees chapter 1-3 draft form');
+$s2->post("/projects/$pid/proposal", ['do' => 'save', 'ch1_background' => 'ร่างโดยสมาชิก'], true);
+$s2->ok('member saves draft');
+check(str_contains($s2->body, 'ร่างโดยสมาชิก'), 'draft text kept');
+$s1->get("/projects/$pid");
+$s1->post("/projects/$pid/proposal", $ch1 + ['do' => 'send_1', 'chapter1' => pdfFile('ch1')], true);
+$s1->ok('leader saves chapter 1 and sends it');
+$s1->post("/projects/$pid/proposal", ['do' => 'send_2', 'ch2_title' => 'ทฤษฎีและงานวิจัยที่เกี่ยวข้อง', 'ch2_heading[0]' => 'ทฤษฎีที่เกี่ยวข้อง', 'ch2_content[0]' => 'Deep learning', 'ch2_heading[1]' => 'งานวิจัยที่เกี่ยวข้อง', 'ch2_content[1]' => 'งานวิจัย A'], true);
+check(str_contains($s1->body, 'alert-danger'), 'chapter 2 without file refused');
+$s1->post("/projects/$pid/proposal", ['do' => 'send_2', 'chapter2' => pdfFile('ch2'), 'ch2_title' => 'ทฤษฎีและงานวิจัยที่เกี่ยวข้อง', 'ch2_heading[0]' => 'ทฤษฎีที่เกี่ยวข้อง', 'ch2_content[0]' => 'Deep learning', 'ch2_heading[1]' => 'งานวิจัยที่เกี่ยวข้อง', 'ch2_content[1]' => 'งานวิจัย A'], true);
+$s1->ok('send chapter 2');
+$s1->post("/projects/$pid/proposal", ['do' => 'send_3', 'chapter3' => pdfFile('ch3'), 'ch3_title' => 'วิธีการดำเนินงาน', 'ch3_heading[0]' => 'ภาพรวมของระบบ', 'ch3_content[0]' => 'สถาปัตยกรรม'], true);
+$s1->ok('send chapter 3');
+$s1->post("/projects/$pid/proposal", ['do' => 'submit'], true);
+check(str_contains($s1->body, 'alert-danger'), 'submit refused before chapters approved');
+$adv->get('/advisor-review');
+$adv->ok('advisor review queue');
+check(substr_count($adv->body, 'บทที่ ') >= 3, 'queue lists pending chapters');
+$adv->get("/projects/$pid");
+$adv->ok('advisor opens chapters');
+$revs = $pdo->query("SELECT id, chapter FROM proposal_chapter_reviews WHERE project_id = $pid ORDER BY chapter")->fetchAll(PDO::FETCH_KEY_PAIR);
+check(count($revs) === 3, '3 chapters waiting');
+$adv->post("/projects/$pid/chapters/" . array_search(2, $revs) . "/review", ['decision' => 'revise', 'comments' => 'เพิ่มงานวิจัย']);
+$adv->ok('advisor returns chapter 2');
+foreach ([1, 3] as $chn) {
+    $adv->post("/projects/$pid/chapters/" . array_search($chn, $revs) . "/review", ['decision' => 'approve', 'comments' => '']);
+    $adv->ok("advisor approves chapter $chn");
+}
+$s1->get("/projects/$pid");
+check(str_contains($s1->body, 'เพิ่มงานวิจัย'), 'student sees chapter 2 comments');
+$s1->post("/projects/$pid/proposal", ['do' => 'send_2', 'ch2_title' => 'ทฤษฎีและงานวิจัยที่เกี่ยวข้อง', 'ch2_heading[0]' => 'ทฤษฎีที่เกี่ยวข้อง', 'ch2_content[0]' => 'Deep learning', 'ch2_heading[1]' => 'งานวิจัยที่เกี่ยวข้อง', 'ch2_content[1]' => 'งานวิจัย A และ B'], true);
+$s1->ok('resend chapter 2');
+$r2b = $q("SELECT id FROM proposal_chapter_reviews WHERE project_id = ? AND chapter = 2 ORDER BY id DESC LIMIT 1", [$pid]);
+$adv->post("/projects/$pid/chapters/$r2b/review", ['decision' => 'approve', 'comments' => '']);
+$adv->ok('advisor approves chapter 2');
+$s1->get("/projects/$pid/proposal/print");
+$s1->ok('print draft chapters');
+check(str_contains($s1->body, 'บทที่ 2') && str_contains($s1->body, '2.2 งานวิจัยที่เกี่ยวข้อง'), 'print shows numbered chapter 2');
+$s1->get("/projects/$pid");
+$s1->post("/projects/$pid/proposal", ['do' => 'submit', 'revision_notes' => ''], true);
 $s1->ok('submit proposal chapter 1 + files');
 check($q('SELECT ch3_file_id FROM proposal_versions ORDER BY id DESC LIMIT 1') !== null, 'chapter 3 stored');
 
@@ -328,7 +366,7 @@ check($other->code === 403 || $other->code === 404, 'other student cannot open p
 
 echo "== Page sweep\n";
 $pages = [
-    'admin' => [$admin, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/summary", "/projects/$pid/progress", "/projects/$pid/scope", "/projects/$pid/topic/print", "/projects/$pid/progress/print", "/projects/$pid/scope/print", '/topics', '/topic-approval', '/proposals', '/committee-assignment', '/final-approval', '/evaluations', '/progress', '/scope-approval', '/reports', '/admin/settings', '/admin/settings/academic', '/admin/settings/deadlines', '/admin/settings/rubric', '/admin/users', '/notifications']],
+    'admin' => [$admin, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/summary", "/projects/$pid/proposal/print?version=1", "/projects/$pid/progress", "/projects/$pid/scope", "/projects/$pid/topic/print", "/projects/$pid/progress/print", "/projects/$pid/scope/print", '/topics', '/topic-approval', '/proposals', '/committee-assignment', '/final-approval', '/evaluations', '/progress', '/scope-approval', '/reports', '/admin/settings', '/admin/settings/academic', '/admin/settings/deadlines', '/admin/settings/rubric', '/admin/users', '/notifications']],
     'advisor' => [$adv, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/progress", "/projects/$pid/scope", '/topics', '/topic-approval', '/advisor-review', '/proposals', '/evaluations', '/progress', '/scope-approval', '/reports', '/notifications']],
     'committee' => [$c1, ['/dashboard', '/evaluations', "/evaluations/$e1", '/scope-approval', "/projects/$pid/scope", '/notifications']],
     'student' => [$s1, ['/dashboard', '/groups', "/groups/$gid", '/topics', '/proposals', '/progress', '/scope-approval', "/projects/$pid/progress", "/projects/$pid/scope", '/notifications']],

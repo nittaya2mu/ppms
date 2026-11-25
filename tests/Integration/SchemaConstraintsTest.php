@@ -21,7 +21,7 @@ final class SchemaConstraintsTest extends DatabaseTestCase
 
     public function testSeedLoadsAllTablesAndDefaultRubric(): void
     {
-        $this->assertSame(36, (int) $this->db->value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"));
+        $this->assertSame(38, (int) $this->db->value("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"));
         $triggers = (int) $this->db->value('SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema = DATABASE()');
         $this->assertSame(self::schemaMode() === 'full' ? 23 : 0, $triggers);
         $this->assertSame('100.00', (string) $this->db->value('SELECT SUM(weight) FROM evaluation_criteria WHERE offering_id = 1'));
