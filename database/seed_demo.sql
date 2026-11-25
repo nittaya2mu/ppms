@@ -6,7 +6,7 @@
 -- All demo accounts use password: Demo@1234 (no forced change)
 --   advisor1, advisor2           role advisor (+ committee)
 --   committee1, committee2       role committee
---   6510000001 ... 6510000006    role student
+--   student1 ... student6        role student (student codes 6510000001 ... 6510000006)
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -19,12 +19,12 @@ INSERT INTO users (id, username, email, password_hash, title_th, first_name_th, 
  (102, 'advisor2',   'advisor2@ppms.local',   @pw, 'อ.ดร.',  'สมหญิง', 'รักเรียน', 'Somying',  'Rakrian',   0),
  (103, 'committee1', 'committee1@ppms.local', @pw, 'รศ.ดร.', 'วิชัย',  'ประเมินดี', 'Wichai',  'Pramoendee', 0),
  (104, 'committee2', 'committee2@ppms.local', @pw, 'ผศ.',    'กมล',   'ตรวจสอบ',  'Kamol',    'Truatsop',  0),
- (201, '6510000001', '6510000001@ppms.local', @pw, 'นาย',    'ธนา',   'ขยันยิ่ง', 'Thana',    'Khayanying', 0),
- (202, '6510000002', '6510000002@ppms.local', @pw, 'นางสาว', 'ปิยะ',  'ตั้งใจ',   'Piya',     'Tangjai',   0),
- (203, '6510000003', '6510000003@ppms.local', @pw, 'นาย',    'กิตติ', 'มุ่งมั่น', 'Kitti',    'Mungman',   0),
- (204, '6510000004', '6510000004@ppms.local', @pw, 'นางสาว', 'อรุณี', 'แสงทอง',  'Arunee',   'Saengthong', 0),
- (205, '6510000005', '6510000005@ppms.local', @pw, 'นาย',    'ภูมิ',  'พัฒนา',   'Phum',     'Phatthana', 0),
- (206, '6510000006', '6510000006@ppms.local', @pw, 'นางสาว', 'ดารา',  'ศรีสุข',  'Dara',     'Srisuk',    0);
+ (201, 'student1',   'student1@ppms.local'  , @pw, 'นาย',    'ธนา',   'ขยันยิ่ง', 'Thana',    'Khayanying', 0),
+ (202, 'student2',   'student2@ppms.local'  , @pw, 'นางสาว', 'ปิยะ',  'ตั้งใจ',   'Piya',     'Tangjai',   0),
+ (203, 'student3',   'student3@ppms.local'  , @pw, 'นาย',    'กิตติ', 'มุ่งมั่น', 'Kitti',    'Mungman',   0),
+ (204, 'student4',   'student4@ppms.local'  , @pw, 'นางสาว', 'อรุณี', 'แสงทอง',  'Arunee',   'Saengthong', 0),
+ (205, 'student5',   'student5@ppms.local'  , @pw, 'นาย',    'ภูมิ',  'พัฒนา',   'Phum',     'Phatthana', 0),
+ (206, 'student6',   'student6@ppms.local'  , @pw, 'นางสาว', 'ดารา',  'ศรีสุข',  'Dara',     'Srisuk',    0);
 
 INSERT INTO user_roles (user_id, role_id, granted_by) VALUES
  (101, 3, 1), (101, 4, 1),

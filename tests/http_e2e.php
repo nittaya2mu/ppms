@@ -121,8 +121,8 @@ function pdfFile(string $label): CURLFile
 
 echo "== Workflow\n";
 $admin = login($base, 'admin');
-$s1 = login($base, '6510000001');
-$s2 = login($base, '6510000002');
+$s1 = login($base, 'student1');
+$s2 = login($base, 'student2');
 $adv = login($base, 'advisor1', 'advisor');
 $c1 = login($base, 'committee1');
 $c2 = login($base, 'committee2');
@@ -249,7 +249,7 @@ check(!str_contains($s1->body, 'วิชัย'), 'committee names hidden from 
 $fileId = (int) $q('SELECT file_id FROM proposal_versions ORDER BY id DESC LIMIT 1');
 $s1->get("/files/$fileId");
 check($s1->code === 200 && str_starts_with($s1->body, '%PDF'), 'student downloads own proposal');
-$other = login($base, '6510000005');
+$other = login($base, 'student5');
 $other->get("/files/$fileId");
 check($other->code === 403 || $other->code === 404, 'other student cannot download proposal');
 $other->get("/projects/$pid");

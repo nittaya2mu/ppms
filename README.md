@@ -63,7 +63,7 @@
 | --- | --- |
 | `advisor1`, `advisor2` | Advisor + Committee (สลับบทบาทได้ที่เมนูผู้ใช้) |
 | `committee1`, `committee2` | Committee |
-| `6510000001` … `6510000006` | Student |
+| `student1` … `student6` (รหัสนิสิต 6510000001 … 6510000006) | Student |
 
 ## การทดสอบ
 
