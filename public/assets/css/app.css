@@ -71,3 +71,12 @@ body { background: var(--ppms-gray); font-family: var(--bs-body-font-family); fo
 .ppms-stepper li.done::before, .ppms-stepper li.current::before { background: var(--ppms-green); }
 .ppms-stepper li.current .dot { border-color: var(--ppms-navy); color: var(--ppms-navy); }
 .ppms-stepper li.current { color: var(--ppms-navy); font-weight: 600; }
+
+/* Printable department forms */
+.ppms-print { font-size: 15px; }
+.ppms-signature { line-height: 1.7; }
+@media print {
+    .ppms-print { font-size: 14px; background: #fff; }
+    .ppms-print .container { max-width: 100%; }
+    .ppms-page-block { break-inside: avoid; page-break-inside: avoid; }
+}

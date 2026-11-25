@@ -91,28 +91,44 @@ final class SettingsController extends Controller
         return $this->attempt($r, '/admin/settings/deadlines', fn () => AcademicService::saveDeadlines((int) $o['id'], $values, $this->userId()), __('settings.saved'));
     }
 
+    /** Evaluation criteria: form 2 (fixed by the department form) and the progress-report rubric (editable). */
     public function rubric(Request $request): Response
     {
-        $o = $this->offering();
         return $this->view('admin/settings/rubric', [
-            'offering' => $o, 'criteria' => AcademicService::rubric((int) $o['id']),
-            'locked' => AcademicService::rubricLocked((int) $o['id']), 'tab' => 'rubric',
+            'progressRubric' => \App\Services\ProgressService::rubric(),
+            'minReports' => \App\Services\ProgressService::minReports(),
+            'maxReports' => \App\Services\ProgressService::maxReports(),
+            'tab' => 'rubric',
         ]);
     }
 
     public function saveRubric(Request $r): Response
     {
-        $o = $this->offering();
-        $rows = [];
-        foreach ((array) ($r->all()['criteria'] ?? []) as $c) {
-            $rows[] = [
-                'id' => isset($c['id']) && $c['id'] !== '' ? (int) $c['id'] : null,
-                'name_th' => (string) ($c['name_th'] ?? ''), 'name_en' => (string) ($c['name_en'] ?? ''),
-                'description' => (string) ($c['description'] ?? ''), 'weight' => (string) ($c['weight'] ?? '0'),
-                'is_active' => isset($c['is_active']),
-            ];
-        }
-        return $this->attempt($r, '/admin/settings/rubric', fn () => AcademicService::saveRubric((int) $o['id'], $rows, $this->userId()), __('settings.saved'));
+        return $this->attempt($r, '/admin/settings/rubric', function () use ($r) {
+            $all = $r->all();
+            $levels = [];
+            foreach ((array) ($all['level_score'] ?? []) as $i => $score) {
+                $label = trim((string) ($all['level_label'][$i] ?? ''));
+                if (trim((string) $score) === '' && $label === '') {
+                    continue;
+                }
+                if (!is_numeric($score) || (float) $score < 0 || $label === '') {
+                    throw new RuleViolation('progress_rubric_invalid', 'Each level needs a score and a description');
+                }
+                $levels[] = ['score' => (float) $score + 0, 'label' => mb_substr($label, 0, 300)];
+            }
+            if (count($levels) < 2 || count(array_unique(array_column($levels, 'score'))) !== count($levels)) {
+                throw new RuleViolation('progress_rubric_invalid', 'At least two levels with different scores are required');
+            }
+            usort($levels, fn ($a, $b) => $b['score'] <=> $a['score']);
+            $min = max(1, (int) ($all['min_reports'] ?? 3));
+            $max = max($min, (int) ($all['max_reports'] ?? 5));
+            $old = ['rubric' => \App\Services\ProgressService::rubric(), 'min' => \App\Services\ProgressService::minReports(), 'max' => \App\Services\ProgressService::maxReports()];
+            SettingsService::set('progress.rubric', json_encode($levels, JSON_UNESCAPED_UNICODE), $this->userId());
+            SettingsService::set('progress.min_reports', (string) $min, $this->userId());
+            SettingsService::set('progress.max_reports', (string) $max, $this->userId());
+            AuditLogger::log('setting.changed', 'setting', null, $old, ['rubric' => $levels, 'min' => $min, 'max' => $max]);
+        }, __('settings.saved'));
     }
 
     public function system(Request $request): Response

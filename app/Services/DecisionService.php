@@ -30,7 +30,10 @@ final class DecisionService
         if ($a === null) {
             return ['differs' => false, 'recommendations' => [], 'average' => null, 'assignment' => null];
         }
-        $recs = array_column($db->fetchAll('SELECT recommendation FROM committee_evaluations WHERE assignment_id = :a ORDER BY member_slot', ['a' => (int) $a['id']]), 'recommendation');
+        $recs = [];
+        foreach (EvaluationService::forAssignment((int) $a['id']) as $e) {
+            $recs[$e['evaluator_role']] = $e['result'];
+        }
         return ['differs' => (bool) $a['recommendations_differ'], 'recommendations' => $recs, 'average' => (float) $a['average_score'], 'assignment' => $a];
     }
 
@@ -55,8 +58,13 @@ final class DecisionService
         // Compare with the recommendations of the latest completed round on the CURRENT version only.
         $relevant = $view['assignment'] !== null && (int) $view['assignment']['proposal_version_id'] === (int) $proposal['current_version_id'];
         $differs = false;
-        if ($relevant && count($view['recommendations']) === 2) {
-            $differs = ScoreCalculator::requiresJustification($decision, $view['recommendations'][0], $view['recommendations'][1], (string) SettingsService::get('decision.justify_when', 'any'));
+        if ($relevant && $view['recommendations']) {
+            // Compare the decision with each evaluator's result (pass / revise / fail on form 2).
+            $category = PresentationForm::decisionResult($decision);
+            $mismatches = count(array_filter($view['recommendations'], fn ($r) => $r !== $category));
+            $differs = (string) SettingsService::get('decision.justify_when', 'any') === 'both'
+                ? $mismatches === count($view['recommendations'])
+                : $mismatches > 0;
         }
         if ($differs && trim((string) $justification) === '') {
             throw new RuleViolation('justification_required', 'A justification is required when the decision differs from the committee');
@@ -148,7 +156,7 @@ final class DecisionService
             'advisor'   => GroupService::advisor((int) $project['group_id']),
             'proposal'  => $proposal,
             'final'     => $final,
-            'committee' => $view['assignment'] ? EvaluationService::summary((int) $view['assignment']['id'], false) : null,
+            'committee' => $view['assignment'] ? EvaluationService::summary((int) $view['assignment']['id']) : null,
         ];
     }
 }

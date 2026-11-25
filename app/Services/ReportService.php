@@ -13,7 +13,7 @@ use App\Core\Database;
  */
 final class ReportService
 {
-    public const ADVISOR_REPORTS = ['groups', 'topic_submissions', 'proposal_submissions', 'average_scores', 'revision_history'];
+    public const ADVISOR_REPORTS = ['groups', 'topic_submissions', 'proposal_submissions', 'average_scores', 'revision_history', 'progress_reports', 'scope_approvals'];
 
     public static function definitions(): array
     {
@@ -64,28 +64,32 @@ final class ReportService
                            WHERE p.offering_id = :o AND {scope} ORDER BY p.project_code, ca.round_no",
             ],
             'individual_evaluations' => [
-                'columns' => ['Project', 'รอบ', 'กรรมการคนที่', 'ผู้ประเมิน', 'คะแนนรวม', 'ข้อเสนอแนะ', 'ส่งเมื่อ'],
-                'sql' => "SELECT p.project_code, ca.round_no, ce.member_slot, {$n('u')}, ce.total_score, ce.recommendation, ce.submitted_at
-                            FROM committee_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id AND ca.status = 'completed'
+                'columns' => ['Project', 'รอบ', 'ผู้ประเมิน (บทบาท)', 'ชื่อผู้ประเมิน', 'การนำเสนอ (40)', 'ทฤษฎี (30)', 'เอกสาร (30)', 'คะแนนรวม', 'เกรด', 'สรุปผล', 'ส่งเมื่อ'],
+                'sql' => "SELECT p.project_code, ca.round_no, ce.evaluator_role, {$n('u')}, ce.grades_json, ce.grades_json, ce.grades_json,
+                                 ce.total_score, ce.letter_grade, ce.result, ce.submitted_at
+                            FROM presentation_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id AND ca.status = 'completed'
                             JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id
                             JOIN project_groups g ON g.id = p.group_id JOIN users u ON u.id = ce.evaluator_id
-                           WHERE p.offering_id = :o AND {scope} ORDER BY p.project_code, ca.round_no, ce.member_slot",
+                           WHERE p.offering_id = :o AND {scope} ORDER BY p.project_code, ca.round_no, FIELD(ce.evaluator_role, 'advisor', 'committee1', 'committee2')",
+                'transform' => 'groupScores',
             ],
             'average_scores' => [
-                'columns' => ['Project', 'ชื่อโครงงาน', 'รอบ', 'S1', 'S2', 'S_avg', 'ข้อเสนอแนะไม่ตรงกัน'],
+                'columns' => ['Project', 'ชื่อโครงงาน', 'รอบ', 'อาจารย์ที่ปรึกษา', 'กรรมการคนที่ 1', 'กรรมการคนที่ 2', 'คะแนนเฉลี่ย', 'ผลไม่ตรงกัน'],
                 'sql' => "SELECT p.project_code, p.title_th, ca.round_no,
-                                 (SELECT total_score FROM committee_evaluations WHERE assignment_id = ca.id AND member_slot = 1),
-                                 (SELECT total_score FROM committee_evaluations WHERE assignment_id = ca.id AND member_slot = 2),
+                                 (SELECT total_score FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'advisor'),
+                                 (SELECT total_score FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'committee1'),
+                                 (SELECT total_score FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'committee2'),
                                  ca.average_score, IF(ca.recommendations_differ = 1, 'ใช่', '')
                             FROM committee_assignments ca JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id
                             JOIN project_groups g ON g.id = p.group_id
                            WHERE p.offering_id = :o AND ca.status = 'completed' AND {scope} ORDER BY p.project_code, ca.round_no",
             ],
             'recommendations' => [
-                'columns' => ['Project', 'รอบ', 'ข้อเสนอแนะคนที่ 1', 'ข้อเสนอแนะคนที่ 2', 'ไม่ตรงกัน', 'S_avg', 'คำตัดสินขั้นสุดท้าย', 'ต่างจากกรรมการ'],
+                'columns' => ['Project', 'รอบ', 'ผล: อาจารย์ที่ปรึกษา', 'ผล: กรรมการคนที่ 1', 'ผล: กรรมการคนที่ 2', 'ไม่ตรงกัน', 'คะแนนเฉลี่ย', 'คำตัดสินขั้นสุดท้าย', 'ต่างจากผู้ประเมิน'],
                 'sql' => "SELECT p.project_code, ca.round_no,
-                                 (SELECT recommendation FROM committee_evaluations WHERE assignment_id = ca.id AND member_slot = 1),
-                                 (SELECT recommendation FROM committee_evaluations WHERE assignment_id = ca.id AND member_slot = 2),
+                                 (SELECT result FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'advisor'),
+                                 (SELECT result FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'committee1'),
+                                 (SELECT result FROM presentation_evaluations WHERE assignment_id = ca.id AND evaluator_role = 'committee2'),
                                  IF(ca.recommendations_differ = 1, 'ใช่', ''), ca.average_score,
                                  (SELECT d.decision FROM approval_decisions d WHERE d.assignment_id = ca.id AND d.decision_level = 'final_decision' ORDER BY d.id DESC LIMIT 1),
                                  (SELECT IF(d.differs_from_committee = 1, 'ใช่', '') FROM approval_decisions d WHERE d.assignment_id = ca.id AND d.decision_level = 'final_decision' ORDER BY d.id DESC LIMIT 1)
@@ -110,13 +114,33 @@ final class ReportService
                             JOIN project_groups g ON g.id = p.group_id JOIN proposal_versions pv ON pv.id = d.proposal_version_id JOIN users u ON u.id = d.decided_by
                            WHERE p.offering_id = :o AND d.decision_level = 'final_decision' AND {scope} ORDER BY p.project_code, d.id",
             ],
+            'progress_reports' => [
+                'columns' => ['Project', 'Group ID', 'ครั้งที่', 'วันที่เข้าพบ', 'สรุปผลการทำโครงงาน', 'ข้อเสนอแนะของอาจารย์', 'คะแนน', 'ผู้ประเมิน', 'ประเมินเมื่อ'],
+                'sql' => "SELECT p.project_code, g.group_code, r.report_no, r.meeting_date, r.work_summary, r.suggestions, r.score, {$n('u')}, r.reviewed_at
+                            FROM progress_reports r JOIN projects p ON p.id = r.project_id JOIN project_groups g ON g.id = p.group_id
+                            LEFT JOIN users u ON u.id = r.reviewed_by
+                           WHERE p.offering_id = :o AND {scope} ORDER BY p.project_code, r.report_no",
+            ],
+            'scope_approvals' => [
+                'columns' => ['Project', 'ชื่อโครงงาน', 'Version', 'จำนวนหัวข้อขอบเขต', 'สถานะ', 'อาจารย์ที่ปรึกษา', 'กรรมการคนที่ 1', 'กรรมการคนที่ 2', 'ส่งเมื่อ', 'อนุมัติครบเมื่อ'],
+                'sql' => "SELECT p.project_code, p.title_th, s.version_no, JSON_LENGTH(s.items_json), s.status,
+                                 (SELECT decision FROM scope_approvals WHERE scope_id = s.id AND approver_role = 'advisor'),
+                                 (SELECT decision FROM scope_approvals WHERE scope_id = s.id AND approver_role = 'committee1'),
+                                 (SELECT decision FROM scope_approvals WHERE scope_id = s.id AND approver_role = 'committee2'),
+                                 s.submitted_at, IF(s.status = 'approved', s.decided_at, NULL)
+                            FROM scope_submissions s JOIN projects p ON p.id = s.project_id JOIN project_groups g ON g.id = p.group_id
+                           WHERE p.offering_id = :o AND {scope} ORDER BY p.project_code, s.version_no",
+            ],
             'course_progress' => [
                 'columns' => ['ขั้นตอน', 'สถานะ', 'จำนวน'],
                 'sql' => "SELECT 'กลุ่มโครงงาน', g.status, COUNT(*) FROM project_groups g WHERE g.offering_id = :o AND g.deleted_at IS NULL AND {scope} GROUP BY g.status
                           UNION ALL
                           SELECT 'หัวข้อโครงงาน', t.status, COUNT(*) FROM project_topics t JOIN projects p ON p.id = t.project_id JOIN project_groups g ON g.id = p.group_id WHERE p.offering_id = :o2 AND t.current_key = 1 AND {scope} GROUP BY t.status
                           UNION ALL
-                          SELECT 'Proposal', ps.status, COUNT(*) FROM proposal_submissions ps JOIN projects p ON p.id = ps.project_id JOIN project_groups g ON g.id = p.group_id WHERE p.offering_id = :o3 AND {scope} GROUP BY ps.status",
+                          SELECT 'Proposal', ps.status, COUNT(*) FROM proposal_submissions ps JOIN projects p ON p.id = ps.project_id JOIN project_groups g ON g.id = p.group_id WHERE p.offering_id = :o3 AND {scope} GROUP BY ps.status
+                          UNION ALL
+                          SELECT 'แบบอนุมัติขอบเขต', s.status, COUNT(*) FROM scope_submissions s JOIN projects p ON p.id = s.project_id JOIN project_groups g ON g.id = p.group_id
+                           WHERE p.offering_id = :o4 AND {scope} AND s.version_no = (SELECT MAX(x.version_no) FROM scope_submissions x WHERE x.project_id = s.project_id) GROUP BY s.status",
             ],
         ];
     }
@@ -135,7 +159,7 @@ final class ReportService
         $def = self::definitions()[$key];
         $params = ['o' => $offeringId];
         if (str_contains($def['sql'], ':o2')) {
-            $params += ['o2' => $offeringId, 'o3' => $offeringId];
+            $params += ['o2' => $offeringId, 'o3' => $offeringId, 'o4' => $offeringId];
         }
         $scope = '1 = 1';
         if ($role === 'advisor') {
@@ -154,7 +178,22 @@ final class ReportService
         }
         $stmt = Database::connection()->query($sql, $params);
         $rows = $stmt->fetchAll(\PDO::FETCH_NUM);
+        if (($def['transform'] ?? null) === 'groupScores') {
+            $rows = array_map([self::class, 'groupScores'], $rows);
+        }
         return ['columns' => $def['columns'], 'rows' => array_map(fn ($r) => array_map(fn ($v) => self::label($v), $r), $rows)];
+    }
+
+    /** Columns 4-6 hold the grades JSON: replace with the points of each form-2 group. */
+    private static function groupScores(array $row): array
+    {
+        $grades = json_decode((string) $row[4], true) ?: [];
+        $points = PresentationForm::score($grades)['items'];
+        $i = 4;
+        foreach (PresentationForm::GROUPS as [$label, $max, $items]) {
+            $row[$i++] = number_format(array_sum(array_intersect_key($points, $items)), 2);
+        }
+        return $row;
     }
 
     /** Translate stored status codes into the UI labels. */
@@ -163,7 +202,7 @@ final class ReportService
         if (!is_string($value) || !preg_match('/^[a-z_]+$/', $value)) {
             return $value;
         }
-        foreach (['status.', 'decision.', 'level.', 'version_status.', 'assignment.', 'revision_mode.', 'member_role.'] as $prefix) {
+        foreach (['status.', 'decision.', 'level.', 'version_status.', 'assignment.', 'revision_mode.', 'member_role.', 'evaluator_role.', 'presentation_result.', 'scope.status_', 'scope.decision_'] as $prefix) {
             $t = __($prefix . $value);
             if ($t !== $prefix . $value) {
                 return $t;

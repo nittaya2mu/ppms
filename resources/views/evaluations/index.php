@@ -13,7 +13,7 @@ $this->layout('layouts/app', ['title' => __('menu.evaluation')]);
             <td><?= e($r['project_code']) ?><div class="small text-secondary"><?= e($r['group_code']) ?></div></td>
             <td><?= e($r['title_th']) ?></td>
             <td><?= (int) $r['round_no'] ?> / v<?= (int) $r['version_no'] ?></td>
-            <td><a href="<?= e(url('/files/' . (int) $r['file_id'])) ?>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> PDF</a></td>
+            <td><a href="<?= e(url('/files/' . (int) $r['file_id'])) ?>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text"></i> <?= e(__('proposals.chapter_n', ['n' => 1])) ?></a></td>
             <td class="<?= $overdue ? 'text-danger fw-semibold' : '' ?>"><?= e(thai_date($r['evaluation_deadline'], true)) ?></td>
             <td><?= status_badge($r['status']) ?></td>
             <td><a class="btn btn-sm <?= $r['status'] === 'submitted' ? 'btn-outline-secondary' : 'btn-ppms' ?>" href="<?= e(url('/evaluations/' . (int) $r['id'])) ?>"><?= e($r['status'] === 'submitted' ? __('evaluations.view') : __('evaluations.evaluate')) ?></a></td>

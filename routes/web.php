@@ -11,6 +11,7 @@ use App\Controllers\FileController;
 use App\Controllers\GroupController;
 use App\Controllers\NotificationController;
 use App\Controllers\ProjectController;
+use App\Controllers\ProjectFormsController;
 use App\Controllers\QueueController;
 use App\Controllers\ReportController;
 use App\Core\Auth;
@@ -65,6 +66,18 @@ $router->group('', ['auth', 'password'], function (Router $r) {
     // Project page (topic + proposal)
     $r->get('/projects/{id}', [ProjectController::class, 'show']);
     $r->get('/projects/{id}/summary', [ProjectController::class, 'summary']);
+    $r->get('/projects/{id}/topic/print', [ProjectController::class, 'topicPrint']);
+    $r->get('/projects/{id}/progress', [ProjectFormsController::class, 'progress']);
+    $r->get('/projects/{id}/progress/print', [ProjectFormsController::class, 'progressPrint']);
+    $r->get('/projects/{id}/scope', [ProjectFormsController::class, 'scope']);
+    $r->get('/projects/{id}/scope/print', [ProjectFormsController::class, 'scopePrint']);
+    $r->group('', ['role:student', 'csrf'], function (Router $r) {
+        $r->post('/projects/{id}/progress', [ProjectFormsController::class, 'progressStore']);
+        $r->post('/projects/{id}/progress/{report}', [ProjectFormsController::class, 'progressUpdate']);
+        $r->post('/projects/{id}/scope', [ProjectFormsController::class, 'scopeStore']);
+    });
+    $r->post('/projects/{id}/progress/{report}/review', [ProjectFormsController::class, 'progressReview'], ['role:advisor', 'csrf']);
+    $r->post('/projects/{id}/scope/decide', [ProjectFormsController::class, 'scopeDecide'], ['role:advisor,committee', 'csrf']);
     $r->group('', ['role:student', 'csrf'], function (Router $r) {
         $r->post('/projects/{id}/topic', [ProjectController::class, 'saveTopic']);
         $r->post('/projects/{id}/topic/documents', [ProjectController::class, 'uploadTopicDocument']);
@@ -93,7 +106,9 @@ $router->group('', ['auth', 'password'], function (Router $r) {
     $r->get('/evaluations', [QueueController::class, 'evaluations']);
 
     // Committee evaluation form
-    $r->group('', ['role:committee'], function (Router $r) {
+    $r->get('/progress', [QueueController::class, 'progress']);
+    $r->get('/scope-approval', [QueueController::class, 'scope']);
+    $r->group('', ['role:advisor,committee'], function (Router $r) {
         $r->get('/evaluations/{id}', [EvaluationController::class, 'edit']);
         $r->post('/evaluations/{id}', [EvaluationController::class, 'save'], ['csrf']);
     });

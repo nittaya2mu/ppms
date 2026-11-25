@@ -21,6 +21,7 @@
 | 10–11 | Committee Evaluation และ Final Approval | **เสร็จ ทดสอบแล้ว** |
 | 12 | Reports (Excel/CSV/PDF) และ System Settings | **เสร็จ ทดสอบแล้ว** |
 | 13–14 | Acceptance test และ Deployment (InfinityFree) | ทดสอบ end-to-end แล้ว, deploy ได้ |
+| ฟอร์มภาควิชา | แบบฟอร์ม 1, บทที่ 1 + ไฟล์บทที่ 1-3, แบบฟอร์ม 2, 7, 8 | **เสร็จ ทดสอบแล้ว** (ฐานข้อมูลเดิม: import `database/migrations/2026-11-25_department_forms.sql`) |
 
 รายละเอียดสิ่งที่ทำแล้ว/ข้อจำกัด: `docs/phase-status.md`
 

@@ -18,7 +18,7 @@ $topicEditable = $isLeader && ($topic === null || in_array($topic['status'], ['d
 $p = $proposalView['proposal'] ?? null;
 $file = fn (?int $id, string $label) => $id ? '<a href="' . e(url('/files/' . $id)) . '" target="_blank" rel="noopener"><i class="bi bi-file-earmark-arrow-down"></i> ' . e($label) . '</a>' : '';
 
-$steps = ['group' => 'group', 'topic' => 'topic', 'proposal' => 'proposal', 'evaluation' => 'evaluation', 'final' => 'final'];
+$steps = ['group' => 'group', 'topic' => 'topic', 'proposal' => 'proposal', 'evaluation' => 'evaluation', 'final' => 'final', 'scope' => 'scope'];
 $current = 1;
 if ($topic && $topic['status'] === 'topic_approved') {
     $current = 2;
@@ -31,6 +31,9 @@ if ($p && in_array($p['status'], ['evaluation_completed', 'final_review', 'revis
 }
 if ($p && in_array($p['status'], ['approved', 'rejected'], true)) {
     $current = 5;
+}
+if ($scopeStatus === 'approved') {
+    $current = 6;
 }
 
 $decisionForm = function (string $action, array $options, bool $commentRequiredHint = true) {
@@ -58,6 +61,7 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
     <?php endif; ?>
 </div>
 
+<?= $this->partial('projects/_tabs', ['project' => $project, 'active' => 'main']) ?>
 <div class="card mb-3"><div class="card-body">
     <ol class="ppms-stepper mb-3">
         <?php $i = 0; foreach ($steps as $s): ?>
@@ -88,17 +92,27 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
         <?php endif; ?>
         <form method="post" action="<?= e(url("$base/topic")) ?>">
             <?= csrf_field() ?>
+            <p class="small text-secondary mb-2"><i class="bi bi-file-earmark-text"></i> <?= e(__('topics.form1_help')) ?></p>
             <div class="row g-2">
-                <?php foreach (TopicService::FIELDS as $f): $long = !in_array($f, ['title_th', 'title_en'], true); ?>
-                    <div class="<?= $long ? 'col-12' : 'col-md-6' ?>">
-                        <label class="form-label small fw-semibold" for="f_<?= e($f) ?>"><?= e(__('topic_field.' . $f)) ?> <span class="text-danger">*</span></label>
-                        <?php if ($long): ?>
-                            <textarea class="form-control" rows="3" id="f_<?= e($f) ?>" name="<?= e($f) ?>"><?= e(old($f, $sub[$f] ?? '')) ?></textarea>
-                        <?php else: ?>
-                            <input class="form-control" id="f_<?= e($f) ?>" name="<?= e($f) ?>" maxlength="500" value="<?= e(old($f, $sub[$f] ?? '')) ?>">
-                        <?php endif; ?>
+                <div class="col-12"><label class="form-label small fw-semibold" for="f_title_th"><?= e(__('topic_field.title_th')) ?> <span class="text-danger">*</span></label>
+                    <input class="form-control" id="f_title_th" name="title_th" maxlength="500" value="<?= e(old('title_th', $sub['title_th'] ?? '')) ?>"></div>
+                <div class="col-12"><label class="form-label small fw-semibold" for="f_title_en"><?= e(__('topic_field.title_en')) ?> <span class="text-danger">*</span></label>
+                    <input class="form-control" id="f_title_en" name="title_en" maxlength="500" value="<?= e(old('title_en', $sub['title_en'] ?? '')) ?>"></div>
+                <div class="col-12"><span class="form-label small fw-semibold d-block"><?= e(__('topic_field.students')) ?></span>
+                    <ul class="small mb-1"><?php foreach ($members as $m): ?><li><?= e(full_name($m)) ?> · <?= e(__('topics.student_code')) ?> <?= e($m['student_code']) ?></li><?php endforeach; ?></ul></div>
+                <div class="col-12"><span class="form-label small fw-semibold d-block"><?= e(__('topic_field.project_type')) ?> <span class="text-danger">*</span></span>
+                    <?php $ptype = old('project_type', $sub['project_type'] ?? ''); ?>
+                    <div class="row row-cols-1 row-cols-md-2 g-1 small">
+                        <?php foreach (TopicService::PROJECT_TYPES as $t): ?>
+                            <div class="col"><div class="form-check"><input class="form-check-input" type="radio" name="project_type" id="pt_<?= e($t) ?>" value="<?= e($t) ?>" <?= $ptype === $t ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="pt_<?= e($t) ?>"><?= e(__('project_type.' . $t)) ?></label></div></div>
+                        <?php endforeach; ?>
                     </div>
-                <?php endforeach; ?>
+                    <input class="form-control form-control-sm mt-1" name="project_type_other" maxlength="200" placeholder="<?= e(__('topic_field.project_type_other')) ?>" value="<?= e(old('project_type_other', $sub['project_type_other'] ?? '')) ?>"></div>
+                <div class="col-md-6"><span class="form-label small fw-semibold d-block"><?= e(__('topic_field.advisor')) ?></span>
+                    <div class="small"><?= $advisor && $advisor['status'] === 'assigned' ? e(full_name($advisor)) : '-' ?></div></div>
+                <div class="col-md-6"><label class="form-label small fw-semibold" for="f_co"><?= e(__('topic_field.co_advisor_name')) ?></label>
+                    <input class="form-control" id="f_co" name="co_advisor_name" maxlength="200" value="<?= e(old('co_advisor_name', $sub['co_advisor_name'] ?? '')) ?>"></div>
                 <?php if ($topic && $topic['status'] === 'revision_required'): ?>
                     <div class="col-12"><label class="form-label small fw-semibold"><?= e(__('topics.revision_note')) ?></label>
                         <textarea class="form-control" rows="2" name="revision_note"><?= e(old('revision_note', $sub['revision_note'] ?? '')) ?></textarea></div>
@@ -119,12 +133,9 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
             </form>
         <?php endif; ?>
     <?php elseif ($sub): ?>
-        <dl class="row small mb-0">
-            <?php foreach (TopicService::FIELDS as $f): ?>
-                <dt class="col-md-3"><?= e(__('topic_field.' . $f)) ?></dt><dd class="col-md-9"><?= nl2br(e($sub[$f])) ?></dd>
-            <?php endforeach; ?>
-            <?php if ($sub['revision_note']): ?><dt class="col-md-3"><?= e(__('topics.revision_note')) ?></dt><dd class="col-md-9"><?= nl2br(e($sub['revision_note'])) ?></dd><?php endif; ?>
-        </dl>
+        <?= $this->partial('projects/_topic_form1', ['sub' => $sub, 'members' => $members, 'advisor' => $advisor]) ?>
+        <?php if ($sub['revision_note']): ?><div class="small"><strong><?= e(__('topics.revision_note')) ?>:</strong> <?= nl2br(e($sub['revision_note'])) ?></div><?php endif; ?>
+        <?php if ((int) $sub['is_draft'] === 0): ?><a class="btn btn-sm btn-outline-secondary mt-2" href="<?= e(url("$base/topic/print")) ?>"><i class="bi bi-printer"></i> <?= e(__('topics.print_form1')) ?></a><?php endif; ?>
     <?php else: ?>
         <p class="text-secondary mb-0"><?= e(__('topics.none')) ?></p>
     <?php endif; ?>
@@ -181,26 +192,29 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
             <?php if ($pv['revision']['due_at']): ?><div class="small"><?= e(__('proposals.revision_due')) ?>: <?= e(thai_date($pv['revision']['due_at'], true)) ?></div><?php endif; ?></div>
     <?php endif; ?>
 
-    <?php if ($isLeader && in_array($status, ['draft', 'revision_required', 'approved_minor'], true)): $resub = $status !== 'draft'; ?>
+    <?php if ($isLeader && in_array($status, ['draft', 'revision_required', 'approved_minor'], true)): $resub = $status !== 'draft'; $prev = $pv['latest']; ?>
         <form method="post" enctype="multipart/form-data" action="<?= e(url("$base/proposal")) ?>" class="border rounded p-3 mb-3" data-confirm="<?= e(__('proposals.submit_confirm')) ?>">
             <?= csrf_field() ?>
             <h3 class="h6"><?= e($resub ? __('proposals.resubmit') : __('proposals.submit')) ?></h3>
+            <p class="small text-secondary"><?= e(__('proposals.chapter1_help')) ?></p>
+            <h4 class="h6 mt-2"><?= e(__('proposals.chapter1')) ?></h4>
             <div class="row g-2">
-                <div class="col-12"><label class="form-label small fw-semibold"><?= e(__('proposals.title')) ?></label>
-                    <input class="form-control" name="title" required maxlength="500" value="<?= e(old('title', $project['title_th'])) ?>"></div>
-                <div class="col-md-6"><label class="form-label small fw-semibold"><?= e(__('proposals.pdf')) ?> (PDF ≤ <?= (int) $proposalMaxMb ?> MB)</label>
-                    <input type="file" class="form-control" name="proposal_pdf" accept="application/pdf,.pdf" required></div>
+                <?php foreach (ProposalService::CHAPTER1 as $i => $k): ?>
+                    <div class="col-12"><label class="form-label small fw-semibold" for="<?= e($k) ?>">1.<?= $i + 1 ?> <?= e(__('chapter1.' . $k)) ?> <span class="text-danger">*</span></label>
+                        <textarea class="form-control" rows="<?= $k === 'ch1_background' ? 6 : 4 ?>" id="<?= e($k) ?>" name="<?= e($k) ?>"><?= e(old($k, $prev[$k] ?? '')) ?></textarea></div>
+                <?php endforeach; ?>
+            </div>
+            <h4 class="h6 mt-3"><?= e(__('proposals.chapter_files')) ?> <span class="small text-secondary fw-normal">(PDF / DOCX ≤ <?= (int) $chapterMaxMb ?> MB)</span></h4>
+            <div class="row g-2">
+                <?php foreach (ProposalService::CHAPTER_FILES as $ch => $col): $hasPrev = !empty($prev[$col]); ?>
+                    <div class="col-md-4"><label class="form-label small fw-semibold"><?= e(__('proposals.chapter_n', ['n' => $ch])) ?><?= $hasPrev ? '' : ' <span class="text-danger">*</span>' ?></label>
+                        <input type="file" class="form-control" name="chapter<?= $ch ?>" accept=".pdf,.docx,.doc" <?= $hasPrev ? '' : 'required' ?>>
+                        <?php if ($hasPrev): ?><div class="form-text"><?= e(__('proposals.keep_previous')) ?></div><?php endif; ?></div>
+                <?php endforeach; ?>
                 <?php if ($resub): ?>
-                    <div class="col-md-6"><label class="form-label small fw-semibold"><?= e(__('proposals.response_doc')) ?> (PDF/DOCX)</label>
+                    <div class="col-md-6"><label class="form-label small fw-semibold"><?= e(__('proposals.response_doc')) ?> (PDF/DOCX) <span class="text-danger">*</span></label>
                         <input type="file" class="form-control" name="response_doc" accept=".pdf,.docx" required></div>
                 <?php endif; ?>
-                <div class="col-12"><label class="form-label small fw-semibold"><?= e(__('proposals.checklist')) ?></label>
-                    <div class="row row-cols-1 row-cols-md-3 g-1 small">
-                        <?php foreach (ProposalService::SECTIONS as $i => $s): ?>
-                            <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" name="sections[]" value="<?= e($s) ?>" id="sec_<?= e($s) ?>">
-                                <label class="form-check-label" for="sec_<?= e($s) ?>"><?= $i + 1 ?>. <?= e(__('section.' . $s)) ?></label></div></div>
-                        <?php endforeach; ?>
-                    </div></div>
                 <div class="col-12"><label class="form-label small fw-semibold"><?= e(__('proposals.revision_notes')) ?></label>
                     <textarea class="form-control" rows="2" name="revision_notes"><?= e(old('revision_notes')) ?></textarea></div>
             </div>
@@ -210,15 +224,22 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
 
     <?php if ($pv['versions']): ?>
         <div class="table-responsive"><table class="table table-sm small align-middle">
-            <thead><tr><th>Version</th><th>ชื่อเรื่อง</th><th>ไฟล์</th><th>ส่งเมื่อ</th><th>สถานะ</th><th>หมายเหตุ / คำชี้แจง</th></tr></thead>
+            <thead><tr><th>Version</th><th><?= e(__('proposals.chapter_files')) ?></th><th>ส่งเมื่อ</th><th>สถานะ</th><th>หมายเหตุ / คำชี้แจง</th></tr></thead>
             <tbody><?php foreach ($pv['versions'] as $v): ?>
-                <tr><td>v<?= (int) $v['version_no'] ?></td><td><?= e($v['title']) ?></td>
-                    <td><?= $file((int) $v['file_id'], $v['original_name']) ?><?php if ($v['response_file_id']): ?><br><?= $file((int) $v['response_file_id'], __('proposals.response_doc')) ?><?php endif; ?></td>
+                <tr><td>v<?= (int) $v['version_no'] ?></td>
+                    <td><?= e(__('proposals.chapter_n', ['n' => 1])) ?>: <?= $file((int) $v['file_id'], $v['original_name']) ?>
+                        <?php if ($v['ch2_file_id']): ?><br><?= e(__('proposals.chapter_n', ['n' => 2])) ?>: <?= $file((int) $v['ch2_file_id'], $v['ch2_name']) ?><?php endif; ?>
+                        <?php if ($v['ch3_file_id']): ?><br><?= e(__('proposals.chapter_n', ['n' => 3])) ?>: <?= $file((int) $v['ch3_file_id'], $v['ch3_name']) ?><?php endif; ?>
+                        <?php if ($v['response_file_id']): ?><br><?= $file((int) $v['response_file_id'], __('proposals.response_doc')) ?><?php endif; ?></td>
                     <td><?= e(thai_date($v['submitted_at'], true)) ?> <?= (int) $v['is_late'] === 1 ? '<span class="badge text-bg-warning">late</span>' : '' ?></td>
                     <td><?= e(__('version_status.' . $v['version_status'])) ?></td>
                     <td><?= nl2br(e($v['revision_notes'])) ?></td></tr>
             <?php endforeach; ?></tbody>
         </table></div>
+        <?php $cur = $pv['versions'][0]; if (!empty($cur['ch1_background'])): ?>
+            <details class="mb-3"><summary class="small fw-semibold"><?= e(__('proposals.chapter1')) ?> (v<?= (int) $cur['version_no'] ?>)</summary>
+                <?= $this->partial('projects/_chapter1', ['v' => $cur]) ?></details>
+        <?php endif; ?>
     <?php endif; ?>
 
     <?php if ($isAdvisor && in_array($status, ['submitted', 'advisor_review'], true)): ?>
@@ -264,7 +285,7 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
             <?php if (isset($pv['progress'][$aid])): ?>
                 <ul class="list-unstyled small mb-0">
                     <?php foreach ($pv['progress'][$aid] as $pr): ?>
-                        <li><?= e(__('evaluations.member', ['n' => (int) $pr['member_slot']])) ?>: <?= e(full_name($pr)) ?> · <?= status_badge($pr['status']) ?></li>
+                        <li><?= e(__('evaluator_role.' . $pr['evaluator_role'])) ?>: <?= e(full_name($pr)) ?> · <?= status_badge($pr['status']) ?></li>
                     <?php endforeach; ?>
                 </ul>
                 <p class="small text-secondary mb-0 mt-1"><i class="bi bi-shield-lock"></i> <?= e(__('evaluations.hidden_until_both')) ?></p>
@@ -279,7 +300,7 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
                         </form></details>
                 <?php endif; ?>
             <?php elseif (isset($pv['summaries'][$aid]) && $pv['summaries'][$aid]): ?>
-                <?= $this->partial('projects/_evaluation_summary', ['summary' => $pv['summaries'][$aid], 'criteria' => $pv['criteria'], 'showNames' => $role !== 'student' || \App\Services\SettingsService::bool('evaluation.show_committee_names'), 'canReopen' => $isAdmin, 'base' => $base]) ?>
+                <?= $this->partial('projects/_evaluation_summary', ['summary' => $pv['summaries'][$aid], 'showNames' => $role !== 'student' || \App\Services\SettingsService::bool('evaluation.show_committee_names'), 'canReopen' => $isAdmin, 'base' => $base]) ?>
             <?php else: ?>
                 <p class="small text-secondary mb-0"><i class="bi bi-hourglass-split"></i> <?= e(__('evaluations.not_released')) ?></p>
             <?php endif; ?>
@@ -292,7 +313,7 @@ $decisionForm = function (string $action, array $options, bool $commentRequiredH
             <h3 class="h6"><i class="bi bi-award"></i> <?= e(__('menu.final_approval')) ?></h3>
             <?php if ($cv['assignment'] && (int) $cv['assignment']['proposal_version_id'] === (int) $p['current_version_id']): ?>
                 <p class="small mb-2"><?= e(__('final.average')) ?>: <strong><?= e(number_format((float) $cv['average'], 2)) ?></strong> ·
-                    <?= e(__('final.recommendations')) ?>: <?php foreach ($cv['recommendations'] as $i => $rec): ?><span class="badge text-bg-light border"><?= e(__('evaluations.member', ['n' => $i + 1])) ?>: <?= e(__('decision.' . $rec)) ?></span> <?php endforeach; ?>
+                    <?= e(__('final.recommendations')) ?>: <?php foreach ($cv['recommendations'] as $erole => $rec): ?><span class="badge text-bg-light border"><?= e(__('evaluator_role.' . $erole)) ?>: <?= e(__('presentation_result.' . $rec)) ?></span> <?php endforeach; ?>
                     <?php if ($cv['differs']): ?><span class="badge text-bg-danger"><?= e(__('final.disagreement')) ?></span><?php endif; ?></p>
                 <p class="small text-secondary"><?= e(__('final.no_auto', ['mode' => __('final.justify_' . $justifyWhen)])) ?></p>
             <?php else: ?>

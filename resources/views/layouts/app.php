@@ -23,6 +23,8 @@ $menus = [
         ['person-check', 'menu.committee_assignment', '/committee-assignment'],
         ['clipboard-data', 'menu.evaluation', '/evaluations'],
         ['award', 'menu.final_approval', '/final-approval'],
+        ['calendar-check', 'menu.progress', '/progress'],
+        ['list-check', 'menu.scope', '/scope-approval'],
         ['bar-chart', 'menu.reports', '/reports'],
         ['person-gear', 'menu.users', '/admin/users'],
         ['gear', 'menu.settings', '/admin/settings'],
@@ -32,6 +34,8 @@ $menus = [
         ['people', 'menu.groups', '/groups'],
         ['journal-text', 'menu.topics', '/topics'],
         ['file-earmark-pdf', 'menu.proposals', '/proposals'],
+        ['calendar-check', 'menu.progress', '/progress'],
+        ['list-check', 'menu.scope', '/scope-approval'],
     ],
     'advisor' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
@@ -39,11 +43,15 @@ $menus = [
         ['check2-square', 'menu.topic_approval', '/topic-approval'],
         ['file-earmark-check', 'menu.advisor_review', '/advisor-review'],
         ['file-earmark-pdf', 'menu.proposals', '/proposals'],
+        ['clipboard-data', 'menu.evaluation', '/evaluations'],
+        ['calendar-check', 'menu.progress', '/progress'],
+        ['list-check', 'menu.scope', '/scope-approval'],
         ['bar-chart', 'menu.reports', '/reports'],
     ],
     'committee' => [
         ['speedometer2', 'menu.dashboard', '/dashboard'],
         ['clipboard-data', 'menu.evaluation', '/evaluations'],
+        ['list-check', 'menu.scope', '/scope-approval'],
     ],
 ];
 $menu = $menus[$activeRole] ?? [];

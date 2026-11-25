@@ -73,23 +73,43 @@
         recalc();
     }
 
-    // Evaluation form: live criterion scores and total (display only; the server recalculates).
-    const totalEl = document.getElementById('evalTotal');
-    if (totalEl) {
-        const recalcEval = function () {
+    // Presentation form (แบบฟอร์ม 2): live item points, total and letter grade (display only; the server recalculates).
+    const presTotal = document.getElementById('presTotal');
+    if (presTotal) {
+        const scale = [[80, 'A'], [75, 'B+'], [70, 'B'], [65, 'C+'], [60, 'C'], [55, 'D+'], [50, 'D'], [0, 'F']];
+        const recalcPres = function () {
             let total = 0;
             let complete = true;
-            document.querySelectorAll('#evalForm tbody tr').forEach(function (tr) {
-                const checked = tr.querySelector('.js-rating:checked');
-                const cell = tr.querySelector('.js-criterion-score');
-                if (!checked) { complete = false; cell.textContent = '-'; return; }
-                const s = Math.round(parseInt(checked.value, 10) * parseFloat(checked.dataset.weight) * 20) / 100;
-                cell.textContent = s.toFixed(2);
-                total += s;
+            document.querySelectorAll('.js-grade').forEach(function (sel) {
+                const cell = sel.closest('tr').querySelector('.js-grade-points');
+                const opt = sel.options[sel.selectedIndex];
+                if (!opt || opt.value === '') { complete = false; cell.textContent = '-'; return; }
+                const pts = Math.round(parseFloat(opt.dataset.point) / 4 * parseFloat(sel.dataset.max) * 100) / 100;
+                cell.textContent = pts.toFixed(2);
+                total += pts;
             });
-            totalEl.textContent = complete ? total.toFixed(2) : total.toFixed(2) + ' *';
+            total = Math.round(total * 100) / 100;
+            presTotal.textContent = total.toFixed(2) + (complete ? '' : ' *');
+            const letter = scale.find(function (s) { return total >= s[0]; });
+            document.getElementById('presLetter').textContent = complete && letter ? letter[1] : '-';
         };
-        document.addEventListener('change', function (e) { if (e.target.classList.contains('js-rating')) { recalcEval(); } });
+        document.addEventListener('change', function (e) { if (e.target.classList.contains('js-grade')) { recalcPres(); } });
+        recalcPres();
+    }
+
+    // Scope form (แบบฟอร์ม 7): live weight total.
+    const scopeTotal = document.getElementById('scopeTotal');
+    if (scopeTotal) {
+        const recalcScope = function () {
+            let sum = 0;
+            document.querySelectorAll('.js-scope-weight').forEach(function (i) { sum += parseFloat(i.value) || 0; });
+            sum = Math.round(sum * 100) / 100;
+            scopeTotal.textContent = sum + '%';
+            scopeTotal.classList.toggle('text-danger', sum !== 100);
+            scopeTotal.classList.toggle('text-success', sum === 100);
+        };
+        document.addEventListener('input', function (e) { if (e.target.classList.contains('js-scope-weight')) { recalcScope(); } });
+        recalcScope();
     }
 
     // Bar charts from data-chart='{"labels":[...],"values":[...]}'

@@ -13,6 +13,7 @@ use App\Services\AccessPolicy;
 use App\Services\DecisionService;
 use App\Services\EvaluationService;
 use App\Services\FileService;
+use App\Services\FormService;
 use App\Services\GroupService;
 use App\Services\ProposalService;
 use App\Services\Rules\RuleViolation;
@@ -59,7 +60,7 @@ final class ProjectController extends Controller
                     default            => false,
                 };
                 if ($visible) {
-                    $summaries[$aid] = EvaluationService::summary($aid, true);
+                    $summaries[$aid] = EvaluationService::summary($aid);
                 } elseif (in_array($role, ['admin', 'advisor'], true)) {
                     $progress[$aid] = EvaluationService::progress($aid);   // status only, never scores
                 }
@@ -67,13 +68,13 @@ final class ProjectController extends Controller
             $proposalView = [
                 'proposal' => $proposal,
                 'versions' => ProposalService::versions((int) $proposal['id']),
+                'latest' => ProposalService::latestVersion((int) $proposal['id']),
                 'decisions' => ProposalService::decisions((int) $proposal['id']),
                 'assignments' => $assignments,
                 'summaries' => $summaries,
                 'progress' => $progress,
                 'revision' => ProposalService::openRevision((int) $proposal['id']),
                 'committeeView' => DecisionService::committeeView((int) $proposal['id']),
-                'criteria' => AcademicService::rubric((int) $group['offering_id'], true),
             ];
         }
 
@@ -88,9 +89,10 @@ final class ProjectController extends Controller
             'isLeader' => $role === 'student' && AccessPolicy::isLeader($groupId),
             'isAdvisor' => $role === 'advisor' && AccessPolicy::isAdvisor($groupId),
             'committeeChoices' => $role === 'admin' ? ProposalService::committeeChoices() : [],
-            'proposalMaxMb' => FileService::maxMb('upload.proposal_max_mb'),
+            'chapterMaxMb' => FileService::maxMb('upload.chapter_max_mb'),
             'topicMaxMb' => FileService::maxMb('upload.topic_max_mb'),
             'justifyWhen' => (string) SettingsService::get('decision.justify_when', 'any'),
+            'scopeStatus' => \App\Services\ScopeService::current($pid)['status'] ?? null,
         ]);
     }
 
@@ -151,8 +153,8 @@ final class ProjectController extends Controller
     {
         $pid = $this->leaderProject($r);
         return $this->attempt($r, "/projects/$pid", function () use ($pid, $r) {
-            $pdf = $r->file('proposal_pdf') ?? throw new RuleViolation('file_upload_failed', 'No file');
-            ProposalService::submit($pid, $pdf, $r->file('response_doc'), (string) $r->input('title'), array_map('strval', (array) ($r->all()['sections'] ?? [])), (string) $r->input('revision_notes'), $this->userId());
+            $files = [1 => $r->file('chapter1'), 2 => $r->file('chapter2'), 3 => $r->file('chapter3')];
+            ProposalService::submit($pid, $r->all(), $files, $r->file('response_doc'), (string) $r->input('revision_notes'), $this->userId());
         }, __('proposals.submitted'));
     }
 
@@ -218,6 +220,29 @@ final class ProjectController extends Controller
         }
         $data['showNames'] = $this->role() !== 'student' || \App\Services\SettingsService::bool('evaluation.show_committee_names');
         return $this->view('projects/summary', $data);
+    }
+
+    /** แบบฟอร์ม 1 (printable). */
+    public function topicPrint(Request $r): Response
+    {
+        $pid = $this->id($r);
+        AccessPolicy::authorizeGroup(AccessPolicy::groupOfProject($pid));
+        $ctx = FormService::context($pid);
+        if ($ctx['topic'] === null) {
+            throw HttpException::notFound();
+        }
+        $approvals = [];
+        $adminUser = null;
+        foreach (Database::connection()->fetchAll(
+            "SELECT a.level, a.decided_at, a.decided_by FROM topic_approvals a WHERE a.submission_id = :s AND a.decision = 'approved' ORDER BY a.id",
+            ['s' => (int) $ctx['topic']['id']]
+        ) as $a) {
+            $approvals[$a['level']] = $a['decided_at'];
+            if ($a['level'] === 'admin') {
+                $adminUser = Database::connection()->fetch('SELECT title_th, first_name_th, last_name_th FROM users WHERE id = :u', ['u' => (int) $a['decided_by']]);
+            }
+        }
+        return $this->view('forms/form1', $ctx + ['approvals' => $approvals, 'adminUser' => $adminUser]);
     }
 
     private function leaderProject(Request $r): int

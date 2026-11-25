@@ -69,7 +69,7 @@ foreach ($appEntries as $entry) {
     }
 }
 
-foreach (['schema_shared_hosting.sql', 'seed.sql', 'seed_demo.sql'] as $sql) {
+foreach (['schema_shared_hosting.sql', 'seed.sql', 'seed_demo.sql', 'demo_accounts.sql', 'migrations/2026-11-25_department_forms.sql'] as $sql) {
     $zip->addFile($root . '/database/' . $sql, 'database/' . $sql);
     $count++;
 }

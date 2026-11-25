@@ -69,6 +69,18 @@ Tests:
   `PPMS_DB_DATABASE=ppms_e2e php -S 127.0.0.1:8000 -t public public/index.php` then
   `PPMS_DB_DATABASE=ppms_e2e php tests/http_e2e.php`.
 
+## Department forms (2569 update)
+
+| แบบฟอร์ม | Screen | Who |
+| --- | --- | --- |
+| 1 แบบขอเสนออนุมัติโครงงาน | `/projects/{id}` topic section, print `/projects/{id}/topic/print` | Student submits; advisor -> course administrator approve |
+| บทที่ 1 (B_05_Chapter_01) + ไฟล์บทที่ 1-3 | `/projects/{id}` proposal section | Student; chapter files carry over on resubmission |
+| 2 แบบประเมินหัวข้อโครงงาน | `/evaluations/{id}` | Advisor + committee 1 + committee 2 (replaces the old 1-5 rubric) |
+| 8 สมุดบันทึกการเข้าพบอาจารย์ที่ปรึกษา | `/projects/{id}/progress`, print `/progress/print` | Students log meetings; advisor scores (rubric in Settings) |
+| 7 แบบอนุมัติขอบเขตโครงงาน | `/projects/{id}/scope`, print `/scope/print` | Leader submits after proposal approval + 3 reviewed meetings; advisor + both committee members approve |
+
+Existing databases: import `database/migrations/2026-11-25_department_forms.sql` (no data loss, re-runnable).
+
 ## Known limitations
 
 - PDF export uses the browser's print-to-PDF on a print layout (no server-side PDF library on shared hosting).

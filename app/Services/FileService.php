@@ -19,6 +19,7 @@ final class FileService
     public const MIME = [
         'pdf'  => ['application/pdf'],
         'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip', 'application/octet-stream'],
+        'doc'  => ['application/msword', 'application/vnd.ms-office', 'application/x-ole-storage', 'application/CDFV2', 'application/octet-stream'],
         'png'  => ['image/png'],
         'jpg'  => ['image/jpeg'],
         'jpeg' => ['image/jpeg'],

@@ -1,23 +1,34 @@
 <?php
-/** @var array $ev @var array $criteria @var array $scores @var array $comments @var ?array $peer */
-use App\Services\EvaluationService;
-use App\Services\ScoreCalculator;
+/** แบบฟอร์ม 2: แบบประเมินหัวข้อโครงงาน (การนำเสนอ). @var array $ev @var array $grades @var array $version @var array $files @var ?array $peer */
+use App\Services\PresentationForm;
 
 $this->layout('layouts/app', ['title' => __('menu.evaluation')]);
 $locked = $ev['status'] === 'submitted';
-$scale = [1 => 'Poor', 2 => 'Needs Improvement', 3 => 'Satisfactory', 4 => 'Good', 5 => 'Excellent'];
+$dis = $locked ? 'disabled' : '';
+$max = PresentationForm::itemMax();
+$fmt = fn (float $n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
 ?>
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
         <div class="small text-secondary"><?= e($ev['project_code']) ?> · <?= e($ev['group_code']) ?> · <?= e(__('evaluations.round', ['n' => (int) $ev['round_no']])) ?></div>
         <h1 class="h4 mb-0"><?= e($ev['title_th']) ?></h1>
-        <div class="small"><?= e(__('evaluations.member', ['n' => (int) $ev['member_slot']])) ?> · <?= e(__('evaluations.deadline')) ?>: <?= e(thai_date($ev['evaluation_deadline'], true)) ?></div>
+        <?php if ($ev['title_en']): ?><div class="text-secondary"><?= e($ev['title_en']) ?></div><?php endif; ?>
+        <div class="small"><?= e(__('evaluations.form2_title')) ?> · <?= e(__('evaluator_role.' . $ev['evaluator_role'])) ?> · <?= e(__('evaluations.deadline')) ?>: <?= e(thai_date($ev['evaluation_deadline'], true)) ?></div>
     </div>
-    <div class="text-end">
-        <?= status_badge($ev['status']) ?><br>
-        <a class="btn btn-sm btn-outline-primary mt-2" href="<?= e(url('/files/' . (int) $ev['file_id'])) ?>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Proposal v<?= (int) $ev['version_no'] ?></a>
-    </div>
+    <div class="text-end"><?= status_badge($ev['status']) ?></div>
 </div>
+
+<div class="card mb-3"><div class="card-body">
+    <h2 class="h6"><i class="bi bi-folder2-open"></i> <?= e(__('evaluations.documents')) ?> (Proposal v<?= (int) $ev['version_no'] ?>)</h2>
+    <div class="d-flex flex-wrap gap-2">
+        <?php foreach ($files as $ch => $f): if (!$f) { continue; } ?>
+            <a class="btn btn-sm btn-outline-primary" href="<?= e(url('/files/' . (int) $f['id'])) ?>" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text"></i> <?= e(__('proposals.chapter_n', ['n' => $ch])) ?> <span class="small text-secondary">(<?= e($f['original_name']) ?>)</span></a>
+        <?php endforeach; ?>
+    </div>
+    <?php if (!empty($version['ch1_background'])): ?>
+        <details class="mt-2"><summary class="small fw-semibold"><?= e(__('proposals.chapter1')) ?></summary><?= $this->partial('projects/_chapter1', ['v' => $version]) ?></details>
+    <?php endif; ?>
+</div></div>
 
 <?php if ($locked): ?><div class="alert alert-info"><i class="bi bi-lock"></i> <?= e(__('evaluations.locked')) ?></div><?php endif; ?>
 <?php if ($ev['status'] === 'reopened'): ?><div class="alert alert-warning"><?= e(__('evaluations.reopened_note')) ?>: <?= e($ev['reopen_reason']) ?></div><?php endif; ?>
@@ -25,43 +36,46 @@ $scale = [1 => 'Poor', 2 => 'Needs Improvement', 3 => 'Satisfactory', 4 => 'Good
 
 <form method="post" action="<?= e(url('/evaluations/' . (int) $ev['id'])) ?>" id="evalForm">
     <?= csrf_field() ?>
-    <div class="card mb-3"><div class="table-responsive"><table class="table align-middle mb-0">
-        <thead class="table-light"><tr><th>เกณฑ์การประเมิน</th><th class="text-end">น้ำหนัก</th><?php foreach ($scale as $n => $label): ?><th class="text-center small"><?= $n ?><br><span class="fw-normal"><?= e($label) ?></span></th><?php endforeach; ?><th class="text-end">คะแนน</th></tr></thead>
-        <tbody>
-        <?php foreach ($criteria as $c): $cid = (int) $c['id']; $cur = (int) ($scores[$cid]['rating'] ?? 0); ?>
-            <tr>
-                <td><?= e($c['name_th']) ?><div class="small text-secondary"><?= e($c['name_en']) ?></div><?php if ($c['description']): ?><div class="small text-secondary"><?= e($c['description']) ?></div><?php endif; ?></td>
-                <td class="text-end"><?= e($c['weight']) ?>%</td>
-                <?php foreach ($scale as $n => $label): ?>
-                    <td class="text-center"><input class="form-check-input js-rating" type="radio" name="rating[<?= $cid ?>]" value="<?= $n ?>" data-weight="<?= e($c['weight']) ?>" aria-label="<?= e($c['name_th'] . ' ' . $n) ?>" <?= $cur === $n ? 'checked' : '' ?> <?= $locked ? 'disabled' : '' ?>></td>
-                <?php endforeach; ?>
-                <td class="text-end js-criterion-score"><?= $cur ? e(number_format(ScoreCalculator::criterionScore($cur, $c['weight']), 2)) : '-' ?></td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-        <tfoot><tr><th colspan="7" class="text-end"><?= e(__('evaluations.total')) ?> (S)</th><th class="text-end fs-5" id="evalTotal"><?= $ev['total_score'] !== null ? e($ev['total_score']) : '-' ?></th></tr></tfoot>
-    </table></div></div>
-
     <div class="card mb-3"><div class="card-body">
-        <h2 class="h6"><?= e(__('evaluations.recommendation')) ?> <span class="text-danger">*</span></h2>
-        <?php foreach (ScoreCalculator::RECOMMENDATIONS as $rec): ?>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="radio" name="recommendation" value="<?= e($rec) ?>" id="rec_<?= e($rec) ?>" <?= $ev['recommendation'] === $rec ? 'checked' : '' ?> <?= $locked ? 'disabled' : '' ?>>
-                <label class="form-check-label" for="rec_<?= e($rec) ?>"><?= e(__('decision.' . $rec)) ?></label>
-            </div>
-        <?php endforeach; ?>
+        <h2 class="h6"><?= e(__('evaluations.proposal_checks')) ?> <span class="text-danger">*</span></h2>
+        <div class="row g-2 small">
+            <?php $i = 1; foreach (PresentationForm::CHECKS as $ck => $clabel): $val = old("check.$ck", $ev[$ck] === null ? null : (string) $ev[$ck]); ?>
+                <div class="col-md-6 d-flex justify-content-between border-bottom py-1"><span><?= $i++ ?>. <?= e($clabel) ?></span><span>
+                    <span class="form-check form-check-inline mb-0"><input class="form-check-input" type="radio" name="check[<?= e($ck) ?>]" id="<?= e($ck) ?>1" value="1" <?= $val === '1' ? 'checked' : '' ?> <?= $dis ?>><label class="form-check-label" for="<?= e($ck) ?>1"><?= e(__('evaluations.suitable')) ?></label></span>
+                    <span class="form-check form-check-inline mb-0 me-0"><input class="form-check-input" type="radio" name="check[<?= e($ck) ?>]" id="<?= e($ck) ?>0" value="0" <?= $val === '0' ? 'checked' : '' ?> <?= $dis ?>><label class="form-check-label" for="<?= e($ck) ?>0"><?= e(__('evaluations.not_suitable')) ?></label></span>
+                </span></div>
+            <?php endforeach; ?>
+        </div>
     </div></div>
 
-    <div class="card mb-3"><div class="card-body">
-        <h2 class="h6"><?= e(__('evaluations.comments')) ?> <span class="text-danger">*</span></h2>
-        <?php foreach (EvaluationService::COMMENT_TYPES as $t): $c = $comments[$t] ?? null; ?>
-            <div class="mb-3">
-                <div class="d-flex justify-content-between"><label class="form-label fw-semibold small" for="c_<?= e($t) ?>"><?= e(__('comment_type.' . $t)) ?></label>
-                    <div class="form-check form-check-inline small mb-0"><input class="form-check-input" type="checkbox" name="critical[]" value="<?= e($t) ?>" id="k_<?= e($t) ?>" <?= $c && (int) $c['is_critical'] === 1 ? 'checked' : '' ?> <?= $locked ? 'disabled' : '' ?>>
-                        <label class="form-check-label" for="k_<?= e($t) ?>"><?= e(__('evaluations.mark_critical')) ?></label></div></div>
-                <textarea class="form-control" rows="3" id="c_<?= e($t) ?>" name="comment[<?= e($t) ?>]" <?= $locked ? 'readonly' : '' ?>><?= e($c['content'] ?? '') ?></textarea>
-            </div>
+    <div class="card mb-3"><div class="table-responsive"><table class="table align-middle mb-0">
+        <thead class="table-light"><tr><th><?= e(__('evaluations.item')) ?></th><th class="text-end"><?= e(__('evaluations.max_points')) ?></th><th style="width:9rem"><?= e(__('evaluations.grade')) ?></th><th class="text-end"><?= e(__('evaluations.points')) ?></th></tr></thead>
+        <tbody>
+        <?php foreach (PresentationForm::GROUPS as [$glabel, $gmax, $items]): ?>
+            <tr class="table-light"><td colspan="4" class="fw-semibold"><?= e($glabel) ?> (<?= (int) $gmax ?> คะแนน)</td></tr>
+            <?php $n = 1; foreach ($items as $key => $label): $g = old("grade.$key", $grades[$key] ?? ''); ?>
+                <tr><td class="ps-3"><?= $n++ ?>. <?= e($label) ?></td><td class="text-end"><?= e($fmt($max[$key])) ?></td>
+                    <td><select class="form-select form-select-sm js-grade" name="grade[<?= e($key) ?>]" data-max="<?= e((string) $max[$key]) ?>" <?= $dis ?>>
+                        <option value="">-</option>
+                        <?php foreach (PresentationForm::GRADES as $letter => $point): ?><option value="<?= e($letter) ?>" data-point="<?= e((string) $point) ?>" <?= $g === $letter ? 'selected' : '' ?>><?= e($letter) ?> (<?= e((string) $point) ?>)</option><?php endforeach; ?>
+                    </select></td>
+                    <td class="text-end js-grade-points">-</td></tr>
+            <?php endforeach; ?>
         <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr class="fw-semibold"><td><?= e(__('evaluations.total')) ?></td><td class="text-end">100</td><td><?= e(__('evaluations.letter_grade')) ?>: <span id="presLetter">-</span></td><td class="text-end fs-5" id="presTotal">0.00</td></tr></tfoot>
+    </table></div>
+    <div class="card-footer small text-secondary"><?= e(__('evaluations.grade_note')) ?></div></div>
+
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h6"><?= e(__('evaluations.result')) ?> <span class="text-danger">*</span></h2>
+        <?php $res = old('result', $ev['result'] ?? ''); foreach (PresentationForm::RESULTS as $rv): ?>
+            <div class="form-check"><input class="form-check-input" type="radio" name="result" id="res_<?= e($rv) ?>" value="<?= e($rv) ?>" <?= $res === $rv ? 'checked' : '' ?> <?= $dis ?>>
+                <label class="form-check-label" for="res_<?= e($rv) ?>"><strong><?= e(__('presentation_result.' . $rv)) ?></strong> <span class="small text-secondary"><?= e(__('presentation_result_desc.' . $rv)) ?></span></label></div>
+        <?php endforeach; ?>
+        <label class="form-label small fw-semibold mt-3" for="suggestions"><?= e(__('evaluations.suggestions')) ?></label>
+        <textarea class="form-control" rows="4" id="suggestions" name="suggestions" <?= $dis ?>><?= e(old('suggestions', $ev['suggestions'] ?? '')) ?></textarea>
+        <div class="form-text"><?= e(__('evaluations.suggestions_help')) ?></div>
     </div></div>
 
     <?php if (!$locked): ?>
@@ -73,8 +87,8 @@ $scale = [1 => 'Poor', 2 => 'Needs Improvement', 3 => 'Satisfactory', 4 => 'Good
 </form>
 
 <?php if ($peer): ?>
-    <div class="card"><div class="card-body">
-        <h2 class="h6"><?= e(__('evaluations.both_results')) ?></h2>
-        <?= $this->partial('projects/_evaluation_summary', ['summary' => $peer, 'criteria' => $criteria, 'showNames' => true, 'canReopen' => false, 'base' => '']) ?>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h6"><?= e(__('evaluations.all_results')) ?></h2>
+        <?= $this->partial('projects/_evaluation_summary', ['summary' => $peer, 'showNames' => true, 'canReopen' => false, 'base' => '']) ?>
     </div></div>
 <?php endif; ?>

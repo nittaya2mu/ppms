@@ -9,6 +9,8 @@ use App\Core\Request;
 use App\Core\Response;
 use App\Services\AccessPolicy;
 use App\Services\EvaluationService;
+use App\Services\ProgressService;
+use App\Services\ScopeService;
 use App\Services\GroupService;
 use App\Services\ProposalService;
 use App\Services\TopicService;
@@ -20,7 +22,7 @@ use App\Services\TopicService;
 final class QueueController extends Controller
 {
     /** Students go straight to their own project page. */
-    private function studentProject(): ?Response
+    private function studentProject(string $suffix = ''): ?Response
     {
         if ($this->role() !== 'student') {
             return null;
@@ -30,7 +32,7 @@ final class QueueController extends Controller
         if ($group === null || !$group['project_id']) {
             return $this->redirect('/groups');
         }
-        return $this->redirect('/projects/' . (int) $group['project_id']);
+        return $this->redirect('/projects/' . (int) $group['project_id'] . $suffix);
     }
 
     public function topics(Request $r): Response
@@ -80,7 +82,7 @@ final class QueueController extends Controller
 
     public function evaluations(Request $r): Response
     {
-        if ($this->role() === 'committee') {
+        if (in_array($this->role(), ['committee', 'advisor'], true)) {
             return $this->view('evaluations/index', ['rows' => EvaluationService::mine($this->userId())]);
         }
         $this->allow(['admin']);
@@ -98,6 +100,26 @@ final class QueueController extends Controller
             'titleKey' => 'menu.final_approval', 'kind' => 'proposal', 'rows' => $rows, 'anchor' => '#proposal',
             'help' => __('queue.final_help'), 'secondary' => $revisions, 'secondaryTitle' => __('queue.waiting_revision'),
         ]);
+    }
+
+    /** แบบฟอร์ม 8: progress reports (students go to their own page). */
+    public function progress(Request $r): Response
+    {
+        if ($redirect = $this->studentProject('/progress')) {
+            return $redirect;
+        }
+        $this->allow(['admin', 'advisor']);
+        return $this->view('queue/progress', ['rows' => ProgressService::queue((int) $this->offering()['id'], $this->role(), $this->userId()), 'minReports' => ProgressService::minReports()]);
+    }
+
+    /** แบบฟอร์ม 7: scope approvals. */
+    public function scope(Request $r): Response
+    {
+        if ($redirect = $this->studentProject('/scope')) {
+            return $redirect;
+        }
+        $this->allow(['admin', 'advisor', 'committee']);
+        return $this->view('queue/scope', ['rows' => ScopeService::queue((int) $this->offering()['id'], $this->role(), $this->userId())]);
     }
 
     private function list(string $titleKey, string $kind, array $rows, string $anchor, ?string $help = null): Response

@@ -16,15 +16,16 @@ use App\Services\Workflow\Workflows;
  */
 final class ProposalService
 {
-    public const SECTIONS = [
-        'title', 'introduction', 'background', 'problem', 'objectives', 'scope', 'literature',
-        'related_research', 'methodology', 'architecture', 'expected_results', 'timeline', 'references',
-    ];
+    /** Chapter 1 sections of the department template (B_05_Chapter_01): 1.1 - 1.6 */
+    public const CHAPTER1 = ['ch1_background', 'ch1_objectives', 'ch1_scope', 'ch1_benefits', 'ch1_tools', 'ch1_plan'];
+
+    /** Uploaded chapter documents: chapter number => proposal_versions column. */
+    public const CHAPTER_FILES = [1 => 'file_id', 2 => 'ch2_file_id', 3 => 'ch3_file_id'];
 
     public static function forProject(int $projectId): ?array
     {
         return Database::connection()->fetch(
-            'SELECT ps.*, pv.version_no, pv.title AS version_title, pv.file_id, pv.submitted_at AS version_submitted_at
+            'SELECT ps.*, pv.version_no, pv.title AS version_title, pv.file_id, pv.ch2_file_id, pv.ch3_file_id, pv.submitted_at AS version_submitted_at
                FROM proposal_submissions ps LEFT JOIN proposal_versions pv ON pv.id = ps.current_version_id
               WHERE ps.project_id = :p',
             ['p' => $projectId]
@@ -39,9 +40,10 @@ final class ProposalService
     public static function versions(int $proposalId): array
     {
         return Database::connection()->fetchAll(
-            'SELECT pv.*, f.original_name, f.file_size, u.first_name_th AS submitter,
+            'SELECT pv.*, f.original_name, f.file_size, f2.original_name AS ch2_name, f3.original_name AS ch3_name, u.first_name_th AS submitter,
                     rs.id AS response_id, rs.response_file_id, rs.response_note
                FROM proposal_versions pv JOIN document_files f ON f.id = pv.file_id JOIN users u ON u.id = pv.submitted_by
+               LEFT JOIN document_files f2 ON f2.id = pv.ch2_file_id LEFT JOIN document_files f3 ON f3.id = pv.ch3_file_id
                LEFT JOIN revision_responses rs ON rs.new_version_id = pv.id
               WHERE pv.proposal_id = :p ORDER BY pv.version_no DESC',
             ['p' => $proposalId]
@@ -93,21 +95,28 @@ final class ProposalService
     {
         return Database::connection()->fetchAll(
             "SELECT u.id, u.title_th, u.first_name_th, u.last_name_th,
-                    (SELECT COUNT(*) FROM committee_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id
-                      WHERE ce.evaluator_id = u.id AND ca.status = 'active' AND ce.status <> 'submitted') AS pending_count
+                    (SELECT COUNT(*) FROM presentation_evaluations pe JOIN committee_assignments ca ON ca.id = pe.assignment_id
+                      WHERE pe.evaluator_id = u.id AND ca.status = 'active' AND pe.status <> 'submitted') AS pending_count
                FROM users u JOIN user_roles ur ON ur.user_id = u.id AND ur.is_active = 1
                JOIN roles r ON r.id = ur.role_id AND r.code = 'committee'
               WHERE u.is_active = 1 AND u.deleted_at IS NULL ORDER BY u.first_name_th"
         );
     }
 
+    /** The latest submitted version (used to pre-fill chapter 1 and to carry chapter files forward). */
+    public static function latestVersion(int $proposalId): ?array
+    {
+        return Database::connection()->fetch('SELECT * FROM proposal_versions WHERE proposal_id = :p ORDER BY version_no DESC LIMIT 1', ['p' => $proposalId]);
+    }
+
     /**
      * P1 (first submission) or P14 (resubmission after a revision request).
-     * @param array $pdf uploaded proposal PDF
-     * @param array|null $response uploaded response-to-comments document (required on resubmission)
-     * @param string[] $checklist ticked section keys
+     * @param array<string,string> $chapter1 CHAPTER1 key => text (sections 1.1 - 1.6)
+     * @param array<int,?array> $files chapter number (1..3) => uploaded file; on resubmission a missing
+     *                                  chapter keeps the file of the previous version
+     * @param array|null $response response-to-comments document (required on resubmission)
      */
-    public static function submit(int $projectId, array $pdf, ?array $response, string $title, array $checklist, ?string $notes, int $userId): int
+    public static function submit(int $projectId, array $chapter1, array $files, ?array $response, ?string $notes, int $userId): int
     {
         $proposal = self::forProject($projectId) ?? throw new RuleViolation('topic_not_approved', 'The topic must be officially approved first');
         $project = Database::connection()->fetch('SELECT * FROM projects WHERE id = :p', ['p' => $projectId]);
@@ -115,30 +124,52 @@ final class ProposalService
         if (!$isResubmission && $proposal['status'] !== 'draft') {
             throw new RuleViolation('proposal_locked', 'The proposal is under review');
         }
-        if (trim($title) === '') {
-            throw new RuleViolation('required_fields', 'Title is required');
+        $text = [];
+        foreach (self::CHAPTER1 as $k) {
+            $text[$k] = trim((string) ($chapter1[$k] ?? ''));
+            if ($text[$k] === '') {
+                throw new RuleViolation('chapter1_incomplete', 'All chapter 1 sections are required');
+            }
         }
-        $missing = array_diff(self::SECTIONS, $checklist);
-        if ($missing) {
-            throw new RuleViolation('proposal_sections', 'All 13 required sections must be confirmed');
+        $previous = self::latestVersion((int) $proposal['id']);
+        foreach (self::CHAPTER_FILES as $ch => $col) {
+            $has = isset($files[$ch]) && (int) ($files[$ch]['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+            if (!$has && empty($previous[$col])) {
+                throw new RuleViolation('chapter_files_required', 'Chapter 1-3 documents are required');
+            }
         }
         $revision = $isResubmission ? self::openRevision((int) $proposal['id']) : null;
         if ($isResubmission && ($response === null)) {
             throw new RuleViolation('response_required', 'A response-to-comments document is required');
         }
         $late = OfferingService::checkDeadline((int) $project['offering_id'], $isResubmission ? 'revision_submission' : 'proposal_submission');
+        $allowed = SettingsService::get('upload.chapter_allowed_ext', ['pdf', 'docx', 'doc']);
+        $allowed = is_array($allowed) ? $allowed : ['pdf'];
 
         $db = Database::connection();
-        return $db->transaction(function (Database $db) use ($proposal, $project, $pdf, $response, $title, $checklist, $notes, $userId, $isResubmission, $revision, $late) {
-            $fileId = FileService::store($pdf, 'proposal_version', null, ['pdf'], 'upload.proposal_max_mb', $userId);
+        return $db->transaction(function (Database $db) use ($proposal, $project, $text, $files, $previous, $allowed, $response, $notes, $userId, $isResubmission, $revision, $late) {
+            $fileIds = [];
+            $fresh = [];
+            foreach (self::CHAPTER_FILES as $ch => $col) {
+                $upload = $files[$ch] ?? null;
+                if ($upload !== null && (int) ($upload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    $fileIds[$col] = FileService::store($upload, 'proposal_version', null, $allowed, 'upload.chapter_max_mb', $userId);
+                    $fresh[] = $fileIds[$col];
+                } else {
+                    $fileIds[$col] = (int) $previous[$col];
+                }
+            }
             $versionNo = 1 + (int) $db->value('SELECT COALESCE(MAX(version_no), 0) FROM proposal_versions WHERE proposal_id = :p', ['p' => (int) $proposal['id']]);
             $db->query("UPDATE proposal_versions SET version_status = 'superseded' WHERE proposal_id = :p AND version_status <> 'superseded'", ['p' => (int) $proposal['id']]);
-            $vid = $db->insert('proposal_versions', [
-                'proposal_id' => (int) $proposal['id'], 'version_no' => $versionNo, 'file_id' => $fileId, 'title' => trim($title),
-                'sections_checklist' => json_encode(array_values($checklist)), 'revision_notes' => trim((string) $notes) ?: null,
+            $vid = $db->insert('proposal_versions', $text + $fileIds + [
+                'proposal_id' => (int) $proposal['id'], 'version_no' => $versionNo,
+                'title' => (string) ($project['title_th'] ?: $project['title_en'] ?: $project['project_code']),
+                'revision_notes' => trim((string) $notes) ?: null,
                 'version_status' => 'submitted', 'is_late' => $late ? 1 : 0, 'submitted_by' => $userId,
             ]);
-            FileService::attach($fileId, 'proposal_version', $vid);
+            foreach ($fresh as $fid) {
+                FileService::attach($fid, 'proposal_version', $vid);
+            }
             if ($isResubmission) {
                 $respFileId = FileService::store($response, 'revision_response', null, ['pdf', 'docx'], 'upload.response_max_mb', $userId);
                 if ($revision !== null) {
@@ -271,11 +302,13 @@ final class ProposalService
                 'advisor_id' => $advisorId, 'member1_id' => $member1, 'member2_id' => $member2, 'assigned_by' => $adminId,
                 'evaluation_deadline' => date('Y-m-d H:i:s', $ts),
             ]);
-            $db->insert('committee_evaluations', ['assignment_id' => $aid, 'evaluator_id' => $member1, 'member_slot' => 1]);
-            $db->insert('committee_evaluations', ['assignment_id' => $aid, 'evaluator_id' => $member2, 'member_slot' => 2]);
+            // แบบฟอร์ม 2: the advisor and both committee members each evaluate the presentation.
+            $db->insert('presentation_evaluations', ['assignment_id' => $aid, 'evaluator_id' => $advisorId, 'evaluator_role' => 'advisor']);
+            $db->insert('presentation_evaluations', ['assignment_id' => $aid, 'evaluator_id' => $member1, 'evaluator_role' => 'committee1']);
+            $db->insert('presentation_evaluations', ['assignment_id' => $aid, 'evaluator_id' => $member2, 'evaluator_role' => 'committee2']);
             $db->update('proposal_versions', ['version_status' => 'accepted_for_evaluation'], 'id = :id', ['id' => (int) $proposal['current_version_id']]);
             (new WorkflowEngine(Workflows::proposal()))->apply((int) $proposal['id'], $action, 'admin', $adminId, "Evaluation round $round", ['current_round_no' => $round, 'needs_admin_attention' => 0]);
-            NotificationService::notify([$member1, $member2], 'committee.assigned', 'ได้รับมอบหมายให้ประเมิน Proposal',
+            NotificationService::notify([$advisorId, $member1, $member2], 'committee.assigned', 'ได้รับมอบหมายให้ประเมินการนำเสนอโครงงาน',
                 "โครงงาน {$project['project_code']} (รอบที่ $round) กำหนดส่ง " . thai_date(date('Y-m-d H:i:s', $ts), true), '/evaluations', 'assignment', $aid);
             NotificationService::notify(GroupService::memberUserIds((int) $project['group_id']), 'committee.assigned', 'มอบหมาย Committee แล้ว',
                 'Proposal ของกลุ่มอยู่ระหว่างการประเมินโดย Committee', '/projects/' . $project['id'], 'proposal', (int) $proposal['id']);
@@ -291,7 +324,7 @@ final class ProposalService
         }
         $db = Database::connection();
         $a = $db->fetch("SELECT * FROM committee_assignments WHERE id = :id AND status = 'active'", ['id' => $assignmentId]) ?? throw new RuleViolation('assignment_missing', 'No active assignment');
-        $ev = $db->fetch('SELECT * FROM committee_evaluations WHERE assignment_id = :a AND member_slot = :s', ['a' => $assignmentId, 's' => $slot]);
+        $ev = $db->fetch('SELECT * FROM presentation_evaluations WHERE assignment_id = :a AND evaluator_role = :r', ['a' => $assignmentId, 'r' => 'committee' . $slot]);
         if ($ev === null || $ev['status'] === 'submitted') {
             throw new RuleViolation('evaluation_locked', 'A submitted evaluation cannot be reassigned');
         }
@@ -300,9 +333,10 @@ final class ProposalService
         CommitteeRules::assertAssignable((int) $a['advisor_id'], $m1, $m2);
         $db->transaction(function (Database $db) use ($a, $ev, $m1, $m2, $newMember, $adminId, $reason, $slot) {
             $db->update('committee_assignments', ['member1_id' => $m1, 'member2_id' => $m2], 'id = :id', ['id' => (int) $a['id']]);
-            $db->query('DELETE FROM evaluation_scores WHERE evaluation_id = :e', ['e' => (int) $ev['id']]);
-            $db->query('DELETE FROM evaluation_comments WHERE evaluation_id = :e', ['e' => (int) $ev['id']]);
-            $db->update('committee_evaluations', ['evaluator_id' => $newMember, 'status' => 'not_started', 'total_score' => null, 'recommendation' => null], 'id = :id', ['id' => (int) $ev['id']]);
+            $db->update('presentation_evaluations', [
+                'evaluator_id' => $newMember, 'status' => 'not_started', 'grades_json' => null, 'total_score' => null, 'letter_grade' => null,
+                'result' => null, 'suggestions' => null, 'objectives_ok' => null, 'scope_ok' => null, 'methodology_ok' => null, 'literature_ok' => null,
+            ], 'id = :id', ['id' => (int) $ev['id']]);
             AuditLogger::log('committee.replaced', 'assignment', (int) $a['id'], ['slot' => $slot, 'member' => (int) $ev['evaluator_id']], ['slot' => $slot, 'member' => $newMember], $reason, $adminId);
             NotificationService::notify([$newMember], 'committee.assigned', 'ได้รับมอบหมายให้ประเมิน Proposal', 'มีโครงงานรอการประเมิน', '/evaluations', 'assignment', (int) $a['id']);
         });

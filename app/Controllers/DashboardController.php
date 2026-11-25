@@ -51,7 +51,7 @@ final class DashboardController
             'approved_topics'      => $topicCounts['topic_approved'] ?? 0,
             'pending_proposals'    => ($proposalCounts['submitted'] ?? 0) + ($proposalCounts['advisor_review'] ?? 0),
             'awaiting_assignment'  => $proposalCounts['committee_assignment'] ?? 0,
-            'pending_evaluations'  => $count("SELECT COUNT(*) FROM committee_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id WHERE p.offering_id = :o AND ca.status = 'active' AND ce.status <> 'submitted'"),
+            'pending_evaluations'  => $count("SELECT COUNT(*) FROM presentation_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id WHERE p.offering_id = :o AND ca.status = 'active' AND ce.status <> 'submitted'"),
             'completed_evaluations'=> $count("SELECT COUNT(*) FROM committee_assignments ca JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id WHERE p.offering_id = :o AND ca.status = 'completed'"),
             'revisions'            => ($proposalCounts['revision_required'] ?? 0) + ($proposalCounts['approved_minor'] ?? 0),
             'final_approved'       => $proposalCounts['approved'] ?? 0,
@@ -124,9 +124,9 @@ final class DashboardController
     {
         $db = Database::connection();
         $evaluations = $db->fetchAll(
-            "SELECT ce.status, ce.member_slot, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status,
+            "SELECT ce.id, ce.status, ce.evaluator_role, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status,
                     p.project_code, p.title_th, pv.version_no
-               FROM committee_evaluations ce
+               FROM presentation_evaluations ce
                JOIN committee_assignments ca ON ca.id = ce.assignment_id
                JOIN proposal_versions pv ON pv.id = ca.proposal_version_id
                JOIN proposal_submissions ps ON ps.id = ca.proposal_id

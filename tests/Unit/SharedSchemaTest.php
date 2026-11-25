@@ -30,6 +30,6 @@ final class SharedSchemaTest extends TestCase
         $this->assertFalse(str_contains($sql, 'TRIGGER'));
         $this->assertFalse(str_contains($sql, 'DELIMITER'));
         $this->assertFalse((bool) preg_match('/CREATE DATABASE|^USE /m', $sql));
-        $this->assertSame(32, preg_match_all('/^CREATE TABLE /m', $sql));
+        $this->assertSame(36, preg_match_all('/^CREATE TABLE /m', $sql));
     }
 }

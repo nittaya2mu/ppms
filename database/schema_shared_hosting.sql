@@ -16,6 +16,7 @@ SET time_zone = '+07:00';
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS
+    scope_approvals, scope_submissions, progress_reports, presentation_evaluations,
     system_settings, status_histories, audit_logs, notifications,
     revision_responses, revision_requests, approval_decisions,
     evaluation_comments, evaluation_scores, committee_evaluations, evaluation_criteria,
@@ -296,6 +297,9 @@ CREATE TABLE topic_submissions (
     expected_benefits TEXT NULL,
     related_work      TEXT NULL,
     references_text   TEXT NULL,
+    project_type       VARCHAR(30)  NULL,
+    project_type_other VARCHAR(200) NULL,
+    co_advisor_name    VARCHAR(200) NULL,
     revision_note     TEXT NULL,
     is_draft          TINYINT(1) NOT NULL DEFAULT 1,
     is_late           TINYINT(1) NOT NULL DEFAULT 0,
@@ -374,6 +378,14 @@ CREATE TABLE proposal_versions (
     file_id            BIGINT UNSIGNED NOT NULL,
     title              VARCHAR(500) NOT NULL,
     sections_checklist JSON NULL,
+    ch1_background     TEXT NULL,
+    ch1_objectives     TEXT NULL,
+    ch1_scope          TEXT NULL,
+    ch1_benefits       TEXT NULL,
+    ch1_tools          TEXT NULL,
+    ch1_plan           TEXT NULL,
+    ch2_file_id        BIGINT UNSIGNED NULL,
+    ch3_file_id        BIGINT UNSIGNED NULL,
     revision_notes     TEXT NULL,
     version_status     ENUM('submitted','under_advisor_review','returned','accepted_for_evaluation',
                             'evaluated','superseded') NOT NULL DEFAULT 'submitted',
@@ -590,7 +602,7 @@ CREATE TABLE audit_logs (
 -- T31 (append-only)
 CREATE TABLE status_histories (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    entity_type ENUM('group','topic','proposal','assignment','evaluation') NOT NULL,
+    entity_type ENUM('group','topic','proposal','assignment','evaluation','scope') NOT NULL,
     entity_id   BIGINT UNSIGNED NOT NULL,
     from_status VARCHAR(40) NULL,
     to_status   VARCHAR(40) NOT NULL,
@@ -612,6 +624,84 @@ CREATE TABLE system_settings (
     updated_at    DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_settings_key (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- 9.6 Department forms (2569): presentation evaluation (form 2), advisor progress
+--     reports (form 8) and scope approval (form 7)
+-- -----------------------------------------------------------------------------
+
+-- T33 Presentation evaluation (form 2) by the advisor and both committee members
+CREATE TABLE presentation_evaluations (
+    id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    assignment_id  BIGINT UNSIGNED NOT NULL,
+    evaluator_id   BIGINT UNSIGNED NOT NULL,
+    evaluator_role ENUM('advisor','committee1','committee2') NOT NULL,
+    status         ENUM('not_started','draft','submitted','reopened') NOT NULL DEFAULT 'not_started',
+    objectives_ok  TINYINT(1) NULL,
+    scope_ok       TINYINT(1) NULL,
+    methodology_ok TINYINT(1) NULL,
+    literature_ok  TINYINT(1) NULL,
+    grades_json    TEXT NULL,
+    total_score    DECIMAL(5,2) NULL,
+    letter_grade   VARCHAR(2) NULL,
+    result         ENUM('pass','revise','fail') NULL,
+    suggestions    TEXT NULL,
+    submitted_at   DATETIME NULL,
+    reopened_by    BIGINT UNSIGNED NULL,
+    reopened_at    DATETIME NULL,
+    reopen_reason  TEXT NULL,
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_pe_role (assignment_id, evaluator_role),
+    KEY idx_pe_evaluator (evaluator_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T34 Advisor meeting / progress reports (form 8)
+CREATE TABLE progress_reports (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    project_id   BIGINT UNSIGNED NOT NULL,
+    report_no    TINYINT UNSIGNED NOT NULL,
+    meeting_date DATE NOT NULL,
+    work_summary TEXT NOT NULL,
+    status       ENUM('submitted','reviewed') NOT NULL DEFAULT 'submitted',
+    submitted_by BIGINT UNSIGNED NOT NULL,
+    submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by  BIGINT UNSIGNED NULL,
+    suggestions  TEXT NULL,
+    score        DECIMAL(5,2) NULL,
+    reviewed_at  DATETIME NULL,
+    updated_at   DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_progress_no (project_id, report_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T35 Scope approval form (form 7): one row per submitted version
+CREATE TABLE scope_submissions (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    project_id   BIGINT UNSIGNED NOT NULL,
+    version_no   SMALLINT UNSIGNED NOT NULL,
+    items_json   TEXT NOT NULL,
+    status       ENUM('pending','approved','revision_required') NOT NULL DEFAULT 'pending',
+    submitted_by BIGINT UNSIGNED NOT NULL,
+    submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at   DATETIME NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_scope_version (project_id, version_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- T36 Scope approvals by the advisor and both committee members
+CREATE TABLE scope_approvals (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    scope_id      BIGINT UNSIGNED NOT NULL,
+    approver_id   BIGINT UNSIGNED NOT NULL,
+    approver_role ENUM('advisor','committee1','committee2') NOT NULL,
+    decision      ENUM('approved','revision_required') NOT NULL,
+    comments      TEXT NULL,
+    decided_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_scope_role (scope_id, approver_role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

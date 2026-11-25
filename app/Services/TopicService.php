@@ -15,10 +15,13 @@ use App\Services\Workflow\Workflows;
  */
 final class TopicService
 {
-    public const FIELDS = [
-        'title_th', 'title_en', 'background', 'problem_statement', 'objectives', 'scope',
-        'expected_outcomes', 'methodology', 'expected_benefits', 'related_work', 'references_text',
-    ];
+    /** Fields of the department's topic approval form (แบบฟอร์ม 1). */
+    public const FIELDS = ['title_th', 'title_en', 'project_type', 'project_type_other', 'co_advisor_name'];
+
+    public const REQUIRED = ['title_th', 'title_en', 'project_type'];
+
+    /** Project types on form 1. */
+    public const PROJECT_TYPES = ['web', 'mobile', 'network', 'api', 'game', 'ml_ai', 'embedded_iot', 'other'];
 
     /** The current (non-rejected) topic of a project, with its latest submission. */
     public static function current(int $projectId): ?array
@@ -109,6 +112,17 @@ final class TopicService
         if (mb_strlen($data['title_th']) > 500 || mb_strlen($data['title_en']) > 500) {
             throw new RuleViolation('title_too_long', 'Title too long');
         }
+        if ($data['project_type'] !== null && !in_array($data['project_type'], self::PROJECT_TYPES, true)) {
+            throw new RuleViolation('invalid', 'Invalid project type');
+        }
+        if ($data['project_type'] !== 'other') {
+            $data['project_type_other'] = null;
+        }
+        foreach (['project_type_other', 'co_advisor_name'] as $f) {
+            if ($data[$f] !== null && mb_strlen($data[$f]) > 200) {
+                throw new RuleViolation('title_too_long', 'Text too long');
+            }
+        }
         $data['revision_note'] = trim((string) ($input['revision_note'] ?? '')) ?: null;
         Database::connection()->update('topic_submissions', $data, 'id = :id', ['id' => (int) $draft['id']]);
         return self::submission((int) $draft['id']);
@@ -138,7 +152,10 @@ final class TopicService
         if ($draft === null || (int) $draft['is_draft'] !== 1) {
             throw new RuleViolation('topic_locked', 'Nothing to submit');
         }
-        $missing = array_filter(self::FIELDS, fn ($f) => trim((string) $draft[$f]) === '');
+        $missing = array_filter(self::REQUIRED, fn ($f) => trim((string) $draft[$f]) === '');
+        if ($draft['project_type'] === 'other' && trim((string) $draft['project_type_other']) === '') {
+            $missing[] = 'project_type_other';
+        }
         if ($missing) {
             throw new RuleViolation('topic_incomplete', 'All topic fields are required: ' . implode(', ', $missing));
         }

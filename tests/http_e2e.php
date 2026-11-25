@@ -159,10 +159,7 @@ check($q('SELECT status FROM project_groups WHERE id = ?', [$gid]) === 'active',
 $pid = (int) $q('SELECT id FROM projects WHERE group_id = ? ORDER BY id DESC LIMIT 1', [$gid]);
 check($pid > 0, "project id=$pid");
 
-$fields = ['title_th' => 'ระบบทดสอบผ่าน HTTP', 'title_en' => 'HTTP Test System'];
-foreach (['background', 'problem_statement', 'objectives', 'scope', 'expected_outcomes', 'methodology', 'expected_benefits', 'related_work', 'references_text'] as $f) {
-    $fields[$f] = "ข้อมูล $f";
-}
+$fields = ['title_th' => 'ระบบทดสอบผ่าน HTTP', 'title_en' => 'HTTP Test System', 'project_type' => 'web', 'project_type_other' => '', 'co_advisor_name' => 'อ.ที่ปรึกษาร่วม ทดสอบ'];
 $s1->get("/projects/$pid");
 $s1->ok('student opens project');
 $s1->post("/projects/$pid/topic", $fields + ['do' => 'save']);
@@ -175,7 +172,7 @@ $adv->ok('advisor topic queue');
 check(str_contains($adv->body, 'ระบบทดสอบผ่าน HTTP'), 'advisor queue lists topic');
 $adv->post("/projects/$pid/topic/advisor", ['decision' => 'revise', 'comments' => 'ขอให้ปรับขอบเขต']);
 $adv->ok('advisor asks topic revision');
-$s1->post("/projects/$pid/topic", $fields + ['scope' => 'ขอบเขตใหม่', 'revision_note' => 'ปรับขอบเขตแล้ว', 'do' => 'submit']);
+$s1->post("/projects/$pid/topic", ['project_type' => 'other', 'project_type_other' => 'Web + IoT', 'revision_note' => 'ปรับประเภทโครงงานแล้ว', 'do' => 'submit'] + $fields);
 $s1->ok('resubmit topic v2');
 check((int) $q('SELECT MAX(version_no) FROM topic_submissions ts JOIN project_topics t ON t.id = ts.topic_id WHERE t.project_id = ?', [$pid]) === 2, 'topic v2 stored');
 $adv->post("/projects/$pid/topic/advisor", ['decision' => 'approve', 'comments' => 'ผ่าน']);
@@ -186,10 +183,21 @@ $admin->post("/projects/$pid/topic/admin", ['decision' => 'approve', 'comments' 
 $admin->ok('admin final-approves topic');
 
 $s1->get("/projects/$pid");
-$s1->post("/projects/$pid/proposal", [
-    'title' => 'ระบบทดสอบผ่าน HTTP', 'proposal_pdf' => pdfFile('proposal_v1'), 'revision_notes' => '',
-] + array_combine(array_map(fn ($i) => "sections[$i]", range(0, 12)), ['title', 'introduction', 'background', 'problem', 'objectives', 'scope', 'literature', 'related_research', 'methodology', 'architecture', 'expected_results', 'timeline', 'references']), true);
-$s1->ok('submit proposal PDF');
+$s1->ok('topic print link visible');
+check(str_contains($s1->body, '/topic/print'), 'form 1 print link');
+$s1->get("/projects/$pid/topic/print");
+$s1->ok('print form 1');
+check(str_contains($s1->body, 'แบบขอเสนออนุมัติโครงงาน') && str_contains($s1->body, '☑ อื่นๆ Web + IoT'), 'form 1 shows project type');
+$s1->get("/projects/$pid");
+$ch1 = [];
+foreach (['ch1_background', 'ch1_objectives', 'ch1_scope', 'ch1_benefits', 'ch1_tools', 'ch1_plan'] as $k) {
+    $ch1[$k] = "บทที่ 1 $k";
+}
+$s1->post("/projects/$pid/proposal", $ch1 + ['chapter1' => pdfFile('ch1'), 'revision_notes' => ''], true);
+check(str_contains($s1->body, 'alert-danger') || str_contains($s1->body, 'บทที่ 1, 2 และ 3'), 'proposal without chapter 2-3 refused');
+$s1->post("/projects/$pid/proposal", $ch1 + ['chapter1' => pdfFile('ch1'), 'chapter2' => pdfFile('ch2'), 'chapter3' => pdfFile('ch3'), 'revision_notes' => ''], true);
+$s1->ok('submit proposal chapter 1 + files');
+check($q('SELECT ch3_file_id FROM proposal_versions ORDER BY id DESC LIMIT 1') !== null, 'chapter 3 stored');
 
 $adv->get('/advisor-review');
 $adv->ok('advisor proposal queue');
@@ -203,30 +211,35 @@ check(!preg_match('/name="member1_id".*?value="101"/s', $admin->body), 'advisor 
 $admin->post("/projects/$pid/committee", ['member1_id' => 103, 'member2_id' => 104, 'deadline' => date('Y-m-d\TH:i', strtotime('+7 days'))]);
 $admin->ok('assign committee');
 
-$criteria = $pdo->query('SELECT id FROM evaluation_criteria WHERE offering_id = 1 AND is_active = 1')->fetchAll(PDO::FETCH_COLUMN);
-$evalPost = function (Client $c, int $userId, int $rating, string $rec, bool $submit) use ($q, $pid, $criteria) {
-    $eid = (int) $q('SELECT e.id FROM committee_evaluations e JOIN committee_assignments ca ON ca.id = e.assignment_id JOIN proposal_submissions p ON p.id = ca.proposal_id WHERE p.project_id = ? AND e.evaluator_id = ? ORDER BY e.id DESC LIMIT 1', [$pid, $userId]);
+$evalPost = function (Client $c, int $userId, string $letter, string $result, bool $submit) use ($q, $pid) {
+    $eid = (int) $q('SELECT e.id FROM presentation_evaluations e JOIN committee_assignments ca ON ca.id = e.assignment_id JOIN proposal_submissions p ON p.id = ca.proposal_id WHERE p.project_id = ? AND e.evaluator_id = ? ORDER BY e.id DESC LIMIT 1', [$pid, $userId]);
     $c->get('/evaluations');
     $c->ok('evaluation queue');
+    check(str_contains($c->body, '/evaluations/' . $eid), 'queue lists own form');
     $c->get("/evaluations/$eid");
-    $c->ok("open evaluation form #$eid");
-    $data = ['recommendation' => $rec, 'do' => $submit ? 'submit' : 'draft'];
-    foreach ($criteria as $cid) {
-        $data["rating[$cid]"] = $rating;
+    $c->ok("open form 2 #$eid");
+    check(str_contains($c->body, 'บทที่ 3') && str_contains($c->body, 'ความเป็นมาและความสำคัญ'), 'form shows chapter files and chapter 1');
+    $data = ['result' => $result, 'suggestions' => $result === 'pass' ? '' : 'ควรปรับปรุง', 'do' => $submit ? 'submit' : 'draft'];
+    foreach (['pres_completeness', 'pres_delivery', 'pres_punctuality', 'pres_dress', 'pres_qa', 'theory_completeness', 'theory_understanding', 'doc_format', 'doc_content'] as $k) {
+        $data["grade[$k]"] = $letter;
     }
-    foreach (['strengths', 'weaknesses', 'technical', 'improvements', 'overall'] as $t) {
-        $data["comment[$t]"] = "ความเห็น $t";
+    foreach (['objectives_ok', 'scope_ok', 'methodology_ok', 'literature_ok'] as $k) {
+        $data["check[$k]"] = '1';
     }
     $c->post("/evaluations/$eid", $data);
-    $c->ok(($submit ? 'submit' : 'save draft') . " evaluation #$eid");
+    $c->ok(($submit ? 'submit' : 'save draft') . " form 2 #$eid");
     return $eid;
 };
-$e1 = $evalPost($c1, 103, 4, 'approved', false);
+$e1 = $evalPost($c1, 103, 'A', 'pass', false);
 $c1->get("/projects/$pid");
-check($c1->code === 403 || !str_contains($c1->body, 'ความเห็น strengths'), 'committee cannot see other evaluations via project page');
-$evalPost($c1, 103, 4, 'approved', true);
-$c2->get('/evaluations');
-$e2 = $evalPost($c2, 104, 3, 'approved_minor', true);
+check($c1->code === 403 || !str_contains($c1->body, 'ควรปรับปรุง'), 'committee cannot see other evaluations');
+$evalPost($c1, 103, 'A', 'pass', true);
+$evalPost($c2, 104, 'B', 'revise', true);
+$advId = $q("SELECT e.id FROM presentation_evaluations e WHERE e.evaluator_role = 'advisor' ORDER BY id DESC LIMIT 1");
+$c1->get("/evaluations/$advId");
+check($c1->code === 403, 'committee cannot open the advisor form');
+$evalPost($adv, 101, 'B+', 'pass', true);
+check($q('SELECT status FROM proposal_submissions WHERE project_id = ?', [$pid]) === 'evaluation_completed', 'all three submitted -> evaluation completed');
 
 $admin->get('/final-approval');
 $admin->ok('final approval queue');
@@ -236,6 +249,7 @@ $admin->ok('admin sees both evaluations');
 $admin->post("/projects/$pid/decision", ['decision' => 'not_approved', 'comments' => 'x', 'reasons' => 'y', 'justification' => '']);
 check(!$admin->flashOk() && $q('SELECT status FROM proposal_submissions WHERE project_id = ?', [$pid]) !== 'rejected', 'override without justification is refused');
 $admin->post("/projects/$pid/decision", ['decision' => 'approved', 'comments' => 'อนุมัติข้อเสนอโครงงาน', 'reasons' => 'คะแนนเฉลี่ยดี', 'justification' => 'กรรมการคนที่ 2 ขอแก้ไขเล็กน้อย แต่ประเด็นแก้ไขแล้วในที่ประชุม']);
+check(str_contains($admin->body, 'อนุมัติข้อเสนอโครงงาน'), 'decision recorded');
 $admin->ok('final decision approved');
 check($q('SELECT status FROM proposal_submissions WHERE project_id = ?', [$pid]) === 'approved', 'proposal approved');
 
@@ -246,7 +260,64 @@ $s1->get("/projects/$pid/summary");
 $s1->ok('approval summary');
 check(!str_contains($s1->body, 'วิชัย'), 'committee names hidden from student (show_committee_names=false)');
 
-$fileId = (int) $q('SELECT file_id FROM proposal_versions ORDER BY id DESC LIMIT 1');
+echo "== Progress reports and scope\n";
+$s1->get("/projects/$pid/scope");
+$s1->ok('scope page before progress');
+check(!str_contains($s1->body, 'name="detail[]"'), 'scope form hidden until 3 reviewed reports');
+for ($i = 1; $i <= 3; $i++) {
+    $who = $i === 2 ? $s2 : $s1;
+    $who->get("/projects/$pid/progress");
+    $who->post("/projects/$pid/progress", ['meeting_date' => date('Y-m-d', strtotime('-' . (10 - $i) . ' days')), 'work_summary' => "สรุปงานครั้งที่ $i"]);
+    $who->ok("submit progress report $i");
+}
+$rids = $pdo->query("SELECT id FROM progress_reports WHERE project_id = $pid ORDER BY report_no")->fetchAll(PDO::FETCH_COLUMN);
+check(count($rids) === 3, '3 progress reports stored');
+$s1->post("/projects/$pid/progress/{$rids[0]}", ['meeting_date' => date('Y-m-d', strtotime('-9 days')), 'work_summary' => 'สรุปงานครั้งที่ 1 (แก้ไข)']);
+$s1->ok('student edits unreviewed report');
+$adv->get('/progress');
+$adv->ok('advisor progress queue');
+$adv->get("/projects/$pid/progress");
+$adv->ok('advisor opens progress page');
+foreach ($rids as $i => $rid) {
+    $adv->post("/projects/$pid/progress/$rid/review", ['score' => (string) [25, 20, 30][$i], 'suggestions' => 'ข้อเสนอแนะครั้งที่ ' . ($i + 1)]);
+    $adv->ok('advisor scores report ' . ($i + 1));
+}
+$s1->post("/projects/$pid/progress/{$rids[0]}", ['meeting_date' => date('Y-m-d'), 'work_summary' => 'x']);
+check(str_contains($s1->body, 'alert-danger'), 'reviewed report locked for students');
+$s1->get("/projects/$pid/progress/print");
+$s1->ok('print form 8');
+check(str_contains($s1->body, 'สมุดบันทึกการเข้าพบ') && substr_count($s1->body, '☑') === 3, 'form 8 shows 3 scored meetings');
+$s1->get("/projects/$pid/scope");
+check(str_contains($s1->body, 'name="detail[]"'), 'scope form available');
+$s1->post("/projects/$pid/scope", ['detail' => ['ระบบสมาชิก', 'ระบบหลัก'], 'weight' => ['40', '50']]);
+check(str_contains($s1->body, 'alert-danger'), 'weights not 100 refused');
+$s1->post("/projects/$pid/scope", ['detail' => ['ระบบสมาชิก', 'ระบบหลัก', 'รายงาน'], 'weight' => ['30', '50', '20']]);
+$s1->ok('submit scope form');
+foreach ([[$adv, 'advisor'], [$c1, 'committee1'], [$c2, 'committee2']] as [$c, $label]) {
+    $c->get('/scope-approval');
+    $c->ok("$label scope queue");
+    check(str_contains($c->body, 'รอท่านพิจารณา'), "$label sees pending scope");
+}
+$c2->post("/projects/$pid/scope/decide", ['decision' => 'revision_required', 'comments' => 'แยกหัวข้อรายงาน']);
+$c2->ok('committee2 asks for revision');
+$s1->get("/projects/$pid/scope");
+check(str_contains($s1->body, 'value="รายงาน"'), 'revision form prefilled');
+$s1->post("/projects/$pid/scope", ['detail' => ['ระบบสมาชิก', 'ระบบหลัก', 'รายงานรายวัน', 'รายงานรายเดือน'], 'weight' => ['30', '50', '10', '10']]);
+$s1->ok('resubmit scope v2');
+$adv->post("/projects/$pid/scope/decide", ['decision' => 'approved', 'comments' => '']);
+$adv->ok('advisor approves scope');
+$c1->post("/projects/$pid/scope/decide", ['decision' => 'approved', 'comments' => '']);
+$c1->ok('committee1 approves scope');
+$c2->post("/projects/$pid/scope/decide", ['decision' => 'approved', 'comments' => 'เห็นชอบ']);
+$c2->ok('committee2 approves scope');
+check($q('SELECT status FROM scope_submissions WHERE project_id = ? ORDER BY version_no DESC LIMIT 1', [$pid]) === 'approved', 'scope approved by all three');
+$s1->get("/projects/$pid/scope/print");
+$s1->ok('print form 7');
+check(str_contains($s1->body, 'แบบอนุมัติขอบเขตโครงงาน') && str_contains($s1->body, 'รายงานรายเดือน'), 'form 7 shows scope items');
+$s1->get("/projects/$pid");
+check(substr_count($s1->body, 'class="done"') === 6, 'stepper complete');
+
+$fileId = (int) $q('SELECT ch3_file_id FROM proposal_versions ORDER BY id DESC LIMIT 1');
 $s1->get("/files/$fileId");
 check($s1->code === 200 && str_starts_with($s1->body, '%PDF'), 'student downloads own proposal');
 $other = login($base, 'student5');
@@ -257,10 +328,10 @@ check($other->code === 403 || $other->code === 404, 'other student cannot open p
 
 echo "== Page sweep\n";
 $pages = [
-    'admin' => [$admin, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/summary", '/topics', '/topic-approval', '/proposals', '/committee-assignment', '/final-approval', '/evaluations', '/reports', '/admin/settings', '/admin/settings/academic', '/admin/settings/deadlines', '/admin/settings/rubric', '/admin/users', '/notifications']],
-    'advisor' => [$adv, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", '/topics', '/topic-approval', '/advisor-review', '/proposals', '/reports', '/notifications']],
-    'committee' => [$c1, ['/dashboard', '/evaluations', "/evaluations/$e1", '/notifications']],
-    'student' => [$s1, ['/dashboard', '/groups', "/groups/$gid", '/topics', '/proposals', '/notifications']],
+    'admin' => [$admin, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/summary", "/projects/$pid/progress", "/projects/$pid/scope", "/projects/$pid/topic/print", "/projects/$pid/progress/print", "/projects/$pid/scope/print", '/topics', '/topic-approval', '/proposals', '/committee-assignment', '/final-approval', '/evaluations', '/progress', '/scope-approval', '/reports', '/admin/settings', '/admin/settings/academic', '/admin/settings/deadlines', '/admin/settings/rubric', '/admin/users', '/notifications']],
+    'advisor' => [$adv, ['/dashboard', '/groups', "/groups/$gid", "/projects/$pid", "/projects/$pid/progress", "/projects/$pid/scope", '/topics', '/topic-approval', '/advisor-review', '/proposals', '/evaluations', '/progress', '/scope-approval', '/reports', '/notifications']],
+    'committee' => [$c1, ['/dashboard', '/evaluations', "/evaluations/$e1", '/scope-approval', "/projects/$pid/scope", '/notifications']],
+    'student' => [$s1, ['/dashboard', '/groups', "/groups/$gid", '/topics', '/proposals', '/progress', '/scope-approval', "/projects/$pid/progress", "/projects/$pid/scope", '/notifications']],
     'new student' => [$other, ['/dashboard', '/groups', '/topics', '/proposals']],
 ];
 foreach ($pages as [$c, $list]) {
@@ -269,7 +340,7 @@ foreach ($pages as [$c, $list]) {
         $c->ok("GET $p");
     }
 }
-foreach (['groups', 'memberships', 'topic_submissions', 'topic_approvals', 'proposal_submissions', 'committee_assignments', 'individual_evaluations', 'average_scores', 'recommendations', 'revision_history', 'final_approvals', 'course_progress'] as $r) {
+foreach (['groups', 'memberships', 'topic_submissions', 'topic_approvals', 'proposal_submissions', 'committee_assignments', 'individual_evaluations', 'average_scores', 'recommendations', 'revision_history', 'final_approvals', 'progress_reports', 'scope_approvals', 'course_progress'] as $r) {
     $admin->get("/reports/$r");
     $admin->ok("report $r");
     $admin->get("/reports/$r?format=xlsx");
@@ -283,6 +354,11 @@ $s1->get('/reports');
 check($s1->code === 403, 'student blocked from reports');
 $s1->get('/admin/settings');
 check($s1->code === 403, 'student blocked from settings');
+$other->get("/projects/$pid/progress");
+check($other->code === 403, 'other student blocked from progress page');
+$admin->post('/admin/settings/rubric', ['min_reports' => '3', 'max_reports' => '6', 'level_score' => ['30', '20', '10', '0'], 'level_label' => ['ดีมาก', 'ดี', 'พอใช้', 'ไม่มีความก้าวหน้า']]);
+$admin->ok('admin saves progress rubric');
+check($q("SELECT setting_value FROM system_settings WHERE setting_key = 'progress.max_reports'") === '6', 'progress settings saved');
 
 echo "\n$pass passed, $fail failed\n";
 exit($fail > 0 ? 1 : 0);

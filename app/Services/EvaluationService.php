@@ -5,46 +5,46 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
-use App\Services\Rules\EvaluationRules;
 use App\Services\Rules\RuleViolation;
 use App\Services\Workflow\WorkflowEngine;
 use App\Services\Workflow\Workflows;
 
 /**
- * Workflow 5: independent proposal evaluation by two committee members (Section 9).
- * Independence (9.4): a member only ever reads their own evaluation until both are submitted.
+ * Presentation evaluation (แบบฟอร์ม 2) by the project advisor and both committee members.
+ * Independence: an evaluator only reads their own form until all three are submitted.
  */
 final class EvaluationService
 {
-    public const COMMENT_TYPES = ['strengths', 'weaknesses', 'technical', 'improvements', 'overall'];
+    public const ROLES = ['advisor', 'committee1', 'committee2'];
 
-    /** Evaluations of the logged-in committee member. */
+    /** Evaluations of the logged-in advisor / committee member. */
     public static function mine(int $userId, bool $pendingOnly = false): array
     {
         return Database::connection()->fetchAll(
-            "SELECT ce.*, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status, ca.proposal_id,
+            "SELECT pe.*, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status, ca.proposal_id,
                     p.id AS project_id, p.project_code, p.title_th, g.group_code, pv.version_no, pv.file_id
-               FROM committee_evaluations ce
-               JOIN committee_assignments ca ON ca.id = ce.assignment_id AND ca.status <> 'cancelled'
+               FROM presentation_evaluations pe
+               JOIN committee_assignments ca ON ca.id = pe.assignment_id AND ca.status <> 'cancelled'
                JOIN proposal_versions pv ON pv.id = ca.proposal_version_id
                JOIN proposal_submissions ps ON ps.id = ca.proposal_id
                JOIN projects p ON p.id = ps.project_id JOIN project_groups g ON g.id = p.group_id
-              WHERE ce.evaluator_id = :u" . ($pendingOnly ? " AND ce.status <> 'submitted'" : '') . '
-              ORDER BY ce.status = \'submitted\', ca.evaluation_deadline',
+              WHERE pe.evaluator_id = :u" . ($pendingOnly ? " AND pe.status <> 'submitted'" : '') . "
+              ORDER BY pe.status = 'submitted', ca.evaluation_deadline",
             ['u' => $userId]
         );
     }
 
-    /** Loads an evaluation only for its own evaluator (FR-EVL-05). */
+    /** Loads an evaluation only for its own evaluator. */
     public static function ownEvaluation(int $evaluationId, int $userId): array
     {
         $ev = Database::connection()->fetch(
-            "SELECT ce.*, ca.proposal_id, ca.proposal_version_id, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status,
-                    ps.project_id, p.offering_id, p.project_code, p.title_th, p.title_en, g.group_code, g.group_name, pv.version_no, pv.file_id
-               FROM committee_evaluations ce JOIN committee_assignments ca ON ca.id = ce.assignment_id
+            "SELECT pe.*, ca.proposal_id, ca.proposal_version_id, ca.evaluation_deadline, ca.round_no, ca.status AS assignment_status,
+                    ps.project_id, p.offering_id, p.project_code, p.title_th, p.title_en, g.group_code, g.group_name, pv.version_no,
+                    pv.file_id, pv.ch2_file_id, pv.ch3_file_id
+               FROM presentation_evaluations pe JOIN committee_assignments ca ON ca.id = pe.assignment_id
                JOIN proposal_submissions ps ON ps.id = ca.proposal_id JOIN projects p ON p.id = ps.project_id
                JOIN project_groups g ON g.id = p.group_id JOIN proposal_versions pv ON pv.id = ca.proposal_version_id
-              WHERE ce.id = :id AND ce.evaluator_id = :u AND ca.status <> 'cancelled'",
+              WHERE pe.id = :id AND pe.evaluator_id = :u AND ca.status <> 'cancelled'",
             ['id' => $evaluationId, 'u' => $userId]
         );
         if ($ev === null) {
@@ -53,123 +53,85 @@ final class EvaluationService
         return $ev;
     }
 
-    public static function scores(int $evaluationId): array
+    public static function grades(array $evaluation): array
     {
-        $out = [];
-        foreach (Database::connection()->fetchAll('SELECT * FROM evaluation_scores WHERE evaluation_id = :e', ['e' => $evaluationId]) as $r) {
-            $out[(int) $r['criterion_id']] = $r;
-        }
-        return $out;
-    }
-
-    public static function comments(int $evaluationId): array
-    {
-        $out = [];
-        foreach (Database::connection()->fetchAll('SELECT * FROM evaluation_comments WHERE evaluation_id = :e', ['e' => $evaluationId]) as $r) {
-            $out[$r['comment_type']] = $r;
-        }
-        return $out;
+        $g = json_decode((string) ($evaluation['grades_json'] ?? ''), true);
+        return is_array($g) ? $g : [];
     }
 
     /**
-     * Saves a draft or submits (locks) the evaluation (FR-EVL-02..04, FR-EVL-06).
-     * @param array<int,int> $ratings criterion_id => 1..5
-     * @param array<string,string> $comments comment_type => text
-     * @param int[] $critical comment types flagged as critical
+     * Saves a draft or submits (locks) the form.
+     * @param array<string,string> $grades item key => letter grade (A ... F)
+     * @param array<string,?string> $checks CHECKS key => '1' suitable | '0' not suitable
      */
-    public static function save(int $evaluationId, int $userId, array $ratings, ?string $recommendation, array $comments, array $critical, bool $submit): void
+    public static function save(int $evaluationId, int $userId, array $grades, array $checks, ?string $result, ?string $suggestions, bool $submit): void
     {
         $ev = self::ownEvaluation($evaluationId, $userId);
-        EvaluationRules::assertEditable($evaluationId);
+        if ($ev['status'] === 'submitted') {
+            throw new RuleViolation('evaluation_locked', 'A submitted evaluation is locked');
+        }
         if ($ev['assignment_status'] === 'cancelled') {
             throw new RuleViolation('assignment_cancelled', 'Assignment cancelled');
         }
-        $criteria = AcademicService::rubric((int) $ev['offering_id'], true);
-        $weights = [];
-        foreach ($criteria as $c) {
-            $weights[(int) $c['id']] = $c['weight'];
+        $grades = array_filter(array_intersect_key(array_map('strval', $grades), PresentationForm::itemMax()), fn ($g) => isset(PresentationForm::GRADES[$g]));
+        $checkValues = [];
+        foreach (PresentationForm::CHECKS as $k => $_) {
+            $v = $checks[$k] ?? null;
+            $checkValues[$k] = ($v === '1' || $v === 1) ? 1 : (($v === '0' || $v === 0) ? 0 : null);
         }
-        $ratings = array_filter(array_map('intval', array_intersect_key($ratings, $weights)), fn ($r) => $r >= 1 && $r <= 5);
-        if ($recommendation !== null && $recommendation !== '' && !in_array($recommendation, ScoreCalculator::RECOMMENDATIONS, true)) {
-            throw new RuleViolation('invalid', 'Invalid recommendation');
-        }
+        $result = $result !== null && in_array($result, PresentationForm::RESULTS, true) ? $result : null;
+        $suggestions = trim((string) $suggestions) ?: null;
+        $score = PresentationForm::score($grades);
 
-        $total = null;
         if ($submit) {
-            if (count($ratings) !== count($weights)) {
-                throw new RuleViolation('evaluation_incomplete', 'Every criterion must be rated');
+            if (!$score['complete'] || in_array(null, $checkValues, true) || $result === null) {
+                throw new RuleViolation('evaluation_incomplete', 'Every item, check and the result are required');
             }
-            if (!$recommendation) {
-                throw new RuleViolation('evaluation_incomplete', 'A recommendation is required');
+            if ($result !== 'pass' && $suggestions === null) {
+                throw new RuleViolation('evaluation_comments', 'Suggestions are required unless the result is pass');
             }
-            foreach (self::COMMENT_TYPES as $t) {
-                if (trim((string) ($comments[$t] ?? '')) === '') {
-                    throw new RuleViolation('evaluation_comments', 'All five comment fields are required');
-                }
-            }
-            $total = ScoreCalculator::total($ratings, $weights)['total'];
         }
 
-        $db = Database::connection();
-        $db->transaction(function (Database $db) use ($ev, $evaluationId, $userId, $ratings, $weights, $recommendation, $comments, $critical, $submit, $total) {
-            foreach ($weights as $cid => $w) {
-                if (!isset($ratings[$cid])) {
-                    $db->query('DELETE FROM evaluation_scores WHERE evaluation_id = :e AND criterion_id = :c', ['e' => $evaluationId, 'c' => $cid]);
-                    continue;
-                }
-                $db->query(
-                    'INSERT INTO evaluation_scores (evaluation_id, criterion_id, rating, weight_snapshot, weighted_score) VALUES (:e, :c, :r, :w, :s)
-                     ON DUPLICATE KEY UPDATE rating = VALUES(rating), weight_snapshot = VALUES(weight_snapshot), weighted_score = VALUES(weighted_score)',
-                    ['e' => $evaluationId, 'c' => $cid, 'r' => $ratings[$cid], 'w' => (string) $w, 's' => (string) ScoreCalculator::criterionScore($ratings[$cid], $w)]
-                );
-            }
-            foreach (self::COMMENT_TYPES as $t) {
-                $text = trim((string) ($comments[$t] ?? ''));
-                if ($text === '') {
-                    $db->query('DELETE FROM evaluation_comments WHERE evaluation_id = :e AND comment_type = :t', ['e' => $evaluationId, 't' => $t]);
-                    continue;
-                }
-                $db->query(
-                    'INSERT INTO evaluation_comments (evaluation_id, comment_type, content, is_critical) VALUES (:e, :t, :c, :k)
-                     ON DUPLICATE KEY UPDATE content = VALUES(content), is_critical = VALUES(is_critical)',
-                    ['e' => $evaluationId, 't' => $t, 'c' => $text, 'k' => in_array($t, $critical, true) ? 1 : 0]
-                );
-            }
-            $data = ['recommendation' => $recommendation ?: null];
+        Database::connection()->transaction(function (Database $db) use ($ev, $evaluationId, $userId, $grades, $checkValues, $result, $suggestions, $score, $submit) {
+            $data = $checkValues + [
+                'grades_json' => json_encode($grades, JSON_UNESCAPED_UNICODE),
+                'total_score' => $grades ? number_format($score['total'], 2, '.', '') : null,
+                'letter_grade' => $score['complete'] ? $score['letter'] : null,
+                'result' => $result, 'suggestions' => $suggestions,
+            ];
             if ($submit) {
-                $data += ['status' => 'submitted', 'total_score' => number_format((float) $total, 2, '.', ''), 'submitted_at' => date('Y-m-d H:i:s')];
+                $data += ['status' => 'submitted', 'submitted_at' => date('Y-m-d H:i:s')];
             } elseif ($ev['status'] === 'not_started') {
                 $data['status'] = 'draft';
             }
-            $db->update('committee_evaluations', $data, 'id = :id', ['id' => $evaluationId]);
+            $db->update('presentation_evaluations', $data, 'id = :id', ['id' => $evaluationId]);
             $db->insert('status_histories', ['entity_type' => 'evaluation', 'entity_id' => $evaluationId, 'from_status' => $ev['status'], 'to_status' => $data['status'] ?? $ev['status'], 'changed_by' => $userId]);
             if ($submit) {
-                AuditLogger::log('evaluation.submitted', 'evaluation', $evaluationId, null, ['total_score' => $total, 'recommendation' => $recommendation, 'ratings' => $ratings], userId: $userId);
-                AcademicService::lockRubric((int) $ev['offering_id']);
-                NotificationService::notify(NotificationService::admins(), 'evaluation.submitted', 'Committee ส่งผลประเมินแล้ว',
-                    "โครงงาน {$ev['project_code']}: กรรมการคนที่ {$ev['member_slot']} ส่งผลประเมินแล้ว", '/projects/' . $ev['project_id'], 'evaluation', $evaluationId);
-                self::completeIfBothSubmitted((int) $ev['assignment_id'], $userId);
+                AuditLogger::log('evaluation.submitted', 'evaluation', $evaluationId, null, ['total_score' => $score['total'], 'result' => $result, 'grades' => $grades], userId: $userId);
+                NotificationService::notify(NotificationService::admins(), 'evaluation.submitted', 'ส่งผลประเมินการนำเสนอแล้ว',
+                    "โครงงาน {$ev['project_code']}: " . __('evaluator_role.' . $ev['evaluator_role']) . ' ส่งผลประเมินแล้ว', '/projects/' . $ev['project_id'], 'evaluation', $evaluationId);
+                self::completeIfAllSubmitted((int) $ev['assignment_id'], $userId);
             }
         });
     }
 
     /**
-     * P8: when both evaluations are submitted, compute S_avg, flag disagreement and move the
-     * proposal to Evaluation Completed (system transition). Also re-run after a reopened
-     * evaluation is submitted again.
+     * When the advisor and both committee members have submitted: average the totals, flag
+     * differing results and move the proposal to Evaluation Completed.
      */
-    public static function completeIfBothSubmitted(int $assignmentId, int $actorId): void
+    public static function completeIfAllSubmitted(int $assignmentId, int $actorId): void
     {
         $db = Database::connection();
-        $evals = $db->fetchAll('SELECT * FROM committee_evaluations WHERE assignment_id = :a ORDER BY member_slot', ['a' => $assignmentId]);
-        if (count($evals) !== 2 || $evals[0]['status'] !== 'submitted' || $evals[1]['status'] !== 'submitted') {
+        $evals = $db->fetchAll('SELECT * FROM presentation_evaluations WHERE assignment_id = :a', ['a' => $assignmentId]);
+        if (count($evals) !== count(self::ROLES) || array_filter($evals, fn ($e) => $e['status'] !== 'submitted')) {
             return;
         }
         $assignment = $db->fetch('SELECT * FROM committee_assignments WHERE id = :a', ['a' => $assignmentId]);
-        $avg = ScoreCalculator::average((float) $evals[0]['total_score'], (float) $evals[1]['total_score']);
-        $differ = ScoreCalculator::recommendationsDiffer($evals[0]['recommendation'], $evals[1]['recommendation']);
+        $totals = array_map(fn ($e) => (float) $e['total_score'], $evals);
+        $avg = round(array_sum($totals) / count($totals) + 1e-9, 2);
+        $differ = count(array_unique(array_column($evals, 'result'))) > 1;
         $gap = SettingsService::int('evaluation.score_gap_flag', 0);
-        $gapFlag = $gap > 0 && abs((float) $evals[0]['total_score'] - (float) $evals[1]['total_score']) >= $gap;
+        $gapFlag = $gap > 0 && (max($totals) - min($totals)) >= $gap;
 
         $db->update('committee_assignments', [
             'status' => 'completed', 'completed_at' => date('Y-m-d H:i:s'),
@@ -180,70 +142,71 @@ final class EvaluationService
         $proposal = ProposalService::find((int) $assignment['proposal_id']);
         $extra = ['needs_admin_attention' => ($differ || $gapFlag) ? 1 : 0];
         if ($proposal['status'] === 'committee_evaluation') {
-            (new WorkflowEngine(Workflows::proposal()))->apply((int) $proposal['id'], 'complete_evaluation', 'system', $actorId, 'Both evaluations submitted', $extra);
+            (new WorkflowEngine(Workflows::proposal()))->apply((int) $proposal['id'], 'complete_evaluation', 'system', $actorId, 'All presentation evaluations submitted', $extra);
         } else {
             $db->update('proposal_submissions', $extra, 'id = :id', ['id' => (int) $proposal['id']]);
         }
         $project = $db->fetch('SELECT * FROM projects WHERE id = :p', ['p' => (int) $proposal['project_id']]);
         NotificationService::notify(array_merge(NotificationService::admins(), [(int) $assignment['advisor_id']]), 'evaluation.completed',
-            'Committee ประเมินครบทั้งสองคนแล้ว', "โครงงาน {$project['project_code']} คะแนนเฉลี่ย " . number_format($avg, 2) . ($differ ? ' (ข้อเสนอแนะไม่ตรงกัน)' : ''),
+            'ประเมินการนำเสนอครบแล้ว', "โครงงาน {$project['project_code']} คะแนนเฉลี่ย " . number_format($avg, 2) . ($differ ? ' (ผลการประเมินไม่ตรงกัน)' : ''),
             '/projects/' . $project['id'], 'proposal', (int) $proposal['id']);
     }
 
-    /** Admin authorizes a change to a submitted evaluation (Section 3.4). */
+    /** Admin authorizes a change to a submitted evaluation (reason required, audited). */
     public static function reopen(int $evaluationId, int $adminId, string $reason): void
     {
-        EvaluationRules::assertReopenable($evaluationId, $adminId, $reason);
+        if (trim($reason) === '') {
+            throw new RuleViolation('reopen_reason', 'A reason is required');
+        }
         $db = Database::connection();
-        $db->transaction(function (Database $db) use ($evaluationId, $adminId, $reason) {
-            $ev = $db->fetch('SELECT * FROM committee_evaluations WHERE id = :id', ['id' => $evaluationId]);
-            $old = ['evaluation' => $ev, 'scores' => array_values(self::scores($evaluationId)), 'comments' => array_values(self::comments($evaluationId))];
-            $db->update('committee_evaluations', ['status' => 'reopened', 'reopened_by' => $adminId, 'reopened_at' => date('Y-m-d H:i:s'), 'reopen_reason' => $reason], 'id = :id', ['id' => $evaluationId]);
+        $ev = $db->fetch('SELECT * FROM presentation_evaluations WHERE id = :id', ['id' => $evaluationId]) ?? throw new RuleViolation('evaluation_missing', 'Not found');
+        if ($ev['status'] !== 'submitted') {
+            throw new RuleViolation('evaluation_not_submitted', 'Only submitted evaluations can be reopened');
+        }
+        $db->transaction(function (Database $db) use ($ev, $evaluationId, $adminId, $reason) {
+            $db->update('presentation_evaluations', ['status' => 'reopened', 'reopened_by' => $adminId, 'reopened_at' => date('Y-m-d H:i:s'), 'reopen_reason' => $reason], 'id = :id', ['id' => $evaluationId]);
             $db->insert('status_histories', ['entity_type' => 'evaluation', 'entity_id' => $evaluationId, 'from_status' => 'submitted', 'to_status' => 'reopened', 'reason' => $reason, 'changed_by' => $adminId]);
-            AuditLogger::log('evaluation.reopened', 'evaluation', $evaluationId, $old, null, $reason, $adminId);
+            AuditLogger::log('evaluation.reopened', 'evaluation', $evaluationId, $ev, null, $reason, $adminId);
             NotificationService::notify([(int) $ev['evaluator_id']], 'evaluation.reopened', 'เปิดให้แก้ไขผลประเมิน', 'ผู้ดูแลระบบเปิดให้แก้ไขผลประเมิน: ' . $reason, '/evaluations/' . $evaluationId, 'evaluation', $evaluationId);
         });
     }
 
-    /**
-     * Summary for viewers other than the evaluator. Returns null while evaluations are incomplete
-     * unless $partialStatusOnly is used (admin progress view shows status only, never scores).
-     */
-    public static function summary(int $assignmentId, bool $withComments = true): ?array
+    /** All three forms of a completed round (null while incomplete). */
+    public static function summary(int $assignmentId): ?array
     {
         $db = Database::connection();
         $a = $db->fetch('SELECT * FROM committee_assignments WHERE id = :a', ['a' => $assignmentId]);
         if ($a === null || $a['status'] !== 'completed') {
             return null;
         }
-        $evals = $db->fetchAll(
-            'SELECT ce.*, u.title_th, u.first_name_th, u.last_name_th FROM committee_evaluations ce JOIN users u ON u.id = ce.evaluator_id
-              WHERE ce.assignment_id = :a ORDER BY ce.member_slot',
-            ['a' => $assignmentId]
-        );
-        foreach ($evals as &$e) {
-            $e['scores'] = $db->fetchAll(
-                'SELECT es.*, c.name_th, c.seq_no FROM evaluation_scores es JOIN evaluation_criteria c ON c.id = es.criterion_id
-                  WHERE es.evaluation_id = :e ORDER BY c.seq_no',
-                ['e' => (int) $e['id']]
-            );
-            $e['comments'] = $withComments ? self::comments((int) $e['id']) : [];
-        }
-        unset($e);
-        return ['assignment' => $a, 'evaluations' => $evals];
+        return ['assignment' => $a, 'evaluations' => self::forAssignment($assignmentId)];
     }
 
-    /** Status-only progress (no scores) for admin/advisor while evaluation is in progress. */
+    public static function forAssignment(int $assignmentId): array
+    {
+        $rows = Database::connection()->fetchAll(
+            "SELECT pe.*, u.title_th, u.first_name_th, u.last_name_th FROM presentation_evaluations pe JOIN users u ON u.id = pe.evaluator_id
+              WHERE pe.assignment_id = :a ORDER BY FIELD(pe.evaluator_role, 'advisor', 'committee1', 'committee2')",
+            ['a' => $assignmentId]
+        );
+        foreach ($rows as &$r) {
+            $r['grades'] = self::grades($r);
+        }
+        return $rows;
+    }
+
+    /** Status-only progress (no scores) while the round is in progress. */
     public static function progress(int $assignmentId): array
     {
         return Database::connection()->fetchAll(
-            'SELECT ce.member_slot, ce.status, ce.submitted_at, u.title_th, u.first_name_th, u.last_name_th
-               FROM committee_evaluations ce JOIN users u ON u.id = ce.evaluator_id WHERE ce.assignment_id = :a ORDER BY ce.member_slot',
+            "SELECT pe.evaluator_role, pe.status, pe.submitted_at, u.title_th, u.first_name_th, u.last_name_th
+               FROM presentation_evaluations pe JOIN users u ON u.id = pe.evaluator_id WHERE pe.assignment_id = :a
+              ORDER BY FIELD(pe.evaluator_role, 'advisor', 'committee1', 'committee2')",
             ['a' => $assignmentId]
         );
     }
 
-    /** OQ-11: may this committee member see the other member's evaluation? */
+    /** May an evaluator see the other forms of this round? */
     public static function peerVisible(int $assignmentId): bool
     {
         return SettingsService::bool('evaluation.peer_visible_after_both', true)

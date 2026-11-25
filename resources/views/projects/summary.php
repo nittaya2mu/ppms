@@ -16,7 +16,7 @@ $evals = $committee['evaluations'] ?? [];
         <tr><th>สมาชิกกลุ่ม</th><td><?php foreach ($members as $m): ?><div><?= e($m['student_code']) ?> <?= e(full_name($m)) ?><?= $m['member_role'] === 'leader' ? ' (Group Leader)' : '' ?></div><?php endforeach; ?></td></tr>
         <tr><th>อาจารย์ที่ปรึกษา</th><td><?= $advisor ? e(full_name($advisor)) : '-' ?></td></tr>
         <?php foreach ($evals as $ev): ?>
-            <tr><th>กรรมการคนที่ <?= (int) $ev['member_slot'] ?></th><td><?= $showNames ? e(full_name($ev)) . ' · ' : '' ?>คะแนน <?= e($ev['total_score']) ?> · <?= e(__('decision.' . $ev['recommendation'])) ?></td></tr>
+            <tr><th>ผลประเมินการนำเสนอ: <?= e(__('evaluator_role.' . $ev['evaluator_role'])) ?></th><td><?= $showNames || $ev['evaluator_role'] === 'advisor' ? e(full_name($ev)) . ' · ' : '' ?>คะแนน <?= e($ev['total_score']) ?> (<?= e($ev['letter_grade']) ?>) · <?= e(__('presentation_result.' . $ev['result'])) ?></td></tr>
         <?php endforeach; ?>
         <tr><th>คะแนนเฉลี่ย (S<sub>avg</sub>)</th><td><?= $committee ? e($committee['assignment']['average_score']) . ' (รอบที่ ' . (int) $committee['assignment']['round_no'] . ')' : '-' ?></td></tr>
         <tr><th>ผลการพิจารณาขั้นสุดท้าย</th><td class="fw-semibold"><?= e(__('decision.' . $final['decision'])) ?></td></tr>
