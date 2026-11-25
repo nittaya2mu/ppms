@@ -411,6 +411,21 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         $this->assertSame('submitted', TopicService::current($pid)['status']);
     }
 
+    /** Group codes stay unique after groups are deleted directly in the database, and across offerings of the same term. */
+    public function testGroupCodesStayUniqueAfterDeletedRows(): void
+    {
+        $g1 = GroupService::create(1, 201, 1, 'ทีม 1');
+        $g2 = GroupService::create(2, 202, 1, 'ทีม 2');
+        $this->rawExec('SET FOREIGN_KEY_CHECKS = 0');
+        $this->rawExec("DELETE FROM project_members WHERE group_id = $g1");
+        $this->rawExec("DELETE FROM project_groups WHERE id = $g1");
+        $this->rawExec('SET FOREIGN_KEY_CHECKS = 1');
+        $g3 = GroupService::create(3, 203, 1, 'ทีม 3');     // COUNT-based numbering would repeat G..-002
+        $codes = array_column($this->db->fetchAll('SELECT group_code FROM project_groups ORDER BY id'), 'group_code');
+        $this->assertSame(count($codes), count(array_unique($codes)));
+        $this->assertTrue($g3 > $g2);
+    }
+
     public function testGroupRules(): void
     {
         $gid = GroupService::create(1, 201, 1, 'ทีม A');

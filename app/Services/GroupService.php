@@ -110,8 +110,7 @@ final class GroupService
                    JOIN academic_years y ON y.id = s.academic_year_id WHERE o.id = :o FOR UPDATE',
                 ['o' => $offeringId]
             );
-            $seq = 1 + (int) $db->value('SELECT COUNT(*) FROM project_groups WHERE offering_id = :o', ['o' => $offeringId]);
-            $code = sprintf('G%02d%d-%03d', (int) $offering['year_be'] % 100, (int) $offering['term_no'], $seq);
+            $code = self::nextGroupCode($db, (int) $offering['year_be'], (int) $offering['term_no']);
             $gid = $db->insert('project_groups', [
                 'offering_id' => $offeringId, 'group_code' => $code, 'group_name' => $name,
                 'leader_student_id' => $studentId, 'status' => 'draft',
@@ -125,6 +124,23 @@ final class GroupService
             AuditLogger::log('group.created', 'group', $gid, null, ['group_code' => $code, 'group_name' => $name], userId: $userId);
             return $gid;
         });
+    }
+
+    /**
+     * Next free code for the term, e.g. G692-007. Uses the highest number already taken by any
+     * group or project of that term (all offerings), so codes never repeat even when rows were
+     * deleted directly in the database or two offerings share a term.
+     */
+    private static function nextGroupCode(Database $db, int $yearBe, int $termNo): string
+    {
+        $prefix = sprintf('%02d%d-', $yearBe % 100, $termNo);
+        $max = 0;
+        foreach ([['project_groups', 'group_code', 'G'], ['projects', 'project_code', 'P']] as [$table, $col, $letter]) {
+            foreach ($db->fetchAll("SELECT $col AS code FROM $table WHERE $col LIKE :p", ['p' => $letter . $prefix . '%']) as $row) {
+                $max = max($max, (int) substr((string) $row['code'], strlen($letter . $prefix)));
+            }
+        }
+        return sprintf('G%s%03d', $prefix, $max + 1);
     }
 
     public static function rename(int $groupId, string $name, int $userId): void
