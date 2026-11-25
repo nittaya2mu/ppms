@@ -64,18 +64,24 @@ final class ProgressService
         return (int) Database::connection()->value("SELECT COUNT(*) FROM progress_reports WHERE project_id = :p AND status = 'reviewed'", ['p' => $projectId]);
     }
 
-    /** Reports may start once the topic has final approval. */
+    /** Reports may start once the project advisor has approved the current topic. */
     public static function open(int $projectId): bool
     {
         $topic = TopicService::current($projectId);
-        return $topic !== null && $topic['status'] === 'topic_approved';
+        if ($topic === null) {
+            return false;
+        }
+        return $topic['status'] === 'topic_approved' || (bool) Database::connection()->value(
+            "SELECT 1 FROM topic_approvals WHERE topic_id = :t AND level = 'advisor' AND decision = 'approved' LIMIT 1",
+            ['t' => (int) $topic['id']]
+        );
     }
 
     public static function submit(int $projectId, int $userId, string $meetingDate, string $summary): int
     {
         $project = self::projectForMember($projectId, $userId);
         if (!self::open($projectId)) {
-            throw new RuleViolation('progress_not_open', 'Progress reports start after the topic is approved');
+            throw new RuleViolation('progress_not_open', 'Progress reports start after the advisor approves the topic');
         }
         [$date, $summary] = self::validate($meetingDate, $summary);
         $db = Database::connection();
@@ -147,7 +153,8 @@ final class ProgressService
                     COUNT(r.id) AS reports, SUM(r.status = 'reviewed') AS reviewed, SUM(r.status = 'submitted') AS pending,
                     MAX(r.submitted_at) AS last_submitted
                FROM projects p JOIN project_groups g ON g.id = p.group_id
-               JOIN project_topics t ON t.project_id = p.id AND t.current_key = 1 AND t.status = 'topic_approved'
+               JOIN project_topics t ON t.project_id = p.id AND t.current_key = 1
+                AND (t.status = 'topic_approved' OR EXISTS (SELECT 1 FROM topic_approvals ta WHERE ta.topic_id = t.id AND ta.level = 'advisor' AND ta.decision = 'approved'))
                LEFT JOIN progress_reports r ON r.project_id = p.id
               WHERE " . implode(' AND ', $where) . '
               GROUP BY p.id, p.project_code, p.title_th, g.group_code, g.group_name

@@ -244,7 +244,12 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         [$gid, $pid] = $this->registeredGroup();
         // Progress reports start only after the topic is approved.
         $this->assertThrows(RuleViolation::class, fn () => ProgressService::submit($pid, 201, date('Y-m-d'), 'งาน'));
-        $this->approvedTopic($pid);
+        TopicService::saveDraft($pid, $this->topicFields(), 201);
+        TopicService::submit($pid, 201);
+        $this->assertThrows(RuleViolation::class, fn () => ProgressService::submit($pid, 201, date('Y-m-d'), 'งาน'));   // submitted, not yet approved
+        TopicService::advisorDecide($pid, self::ADVISOR, 'approve', null);
+        $this->assertTrue(ProgressService::open($pid), 'open once the advisor approves (before final approval)');
+        TopicService::adminDecide($pid, self::ADMIN, 'approve', 'อนุมัติ');
         $this->assertThrows(RuleViolation::class, fn () => ProgressService::submit($pid, 205, date('Y-m-d'), 'งาน'), 'member');   // not in the group
         $this->assertThrows(RuleViolation::class, fn () => ProgressService::submit($pid, 201, date('Y-m-d', strtotime('+5 days')), 'งาน'));   // future date
         $r1 = ProgressService::submit($pid, 201, date('Y-m-d', strtotime('-20 days')), 'ออกแบบฐานข้อมูล');
