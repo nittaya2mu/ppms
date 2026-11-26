@@ -42,7 +42,8 @@ final class GroupController extends Controller
             $advisorFilter,
             (int) $request->query('page', 1)
         );
-        return $this->view('groups/index', $result + ['q' => (string) $request->query('q', ''), 'status' => (string) $request->query('status', ''), 'offering' => $offering]);
+        $requests = GroupService::advisorRequests((int) $offering['id'], $this->role() === 'advisor' ? $this->userId() : null);
+        return $this->view('groups/index', $result + ['q' => (string) $request->query('q', ''), 'status' => (string) $request->query('status', ''), 'offering' => $offering, 'advisorRequests' => $requests]);
     }
 
     public function showPage(Request $request): Response
@@ -61,6 +62,10 @@ final class GroupController extends Controller
             'history'    => $this->role() === 'admin' ? GroupService::history($groupId) : [],
             'isLeader'   => $this->role() === 'student' && AccessPolicy::isLeader($groupId),
             'advisors'   => in_array($this->role(), ['student', 'admin'], true) ? GroupService::advisorChoices() : [],
+            'myRequest'  => $this->role() === 'advisor' ? \App\Core\Database::connection()->fetch(
+                "SELECT * FROM project_advisors WHERE group_id = :g AND advisor_id = :u AND status = 'requested' ORDER BY id DESC LIMIT 1",
+                ['g' => $groupId, 'u' => $this->userId()]
+            ) : null,
             'topic'      => $group['project_id'] ? TopicService::current((int) $group['project_id']) : null,
             'minMembers' => SettingsService::int('group.min_members', 2),
             'maxMembers' => SettingsService::int('group.max_members', 3),
@@ -111,6 +116,15 @@ final class GroupController extends Controller
     {
         $gid = $this->leaderGroup($r);
         return $this->attempt($r, '/groups', fn () => GroupService::requestAdvisor($gid, (int) $r->input('advisor_id'), $this->userId()), __('groups.advisor_requested'));
+    }
+
+    /** The requested advisor accepts or declines (step 2 of 3). */
+    public function respondAdvisor(Request $r): Response
+    {
+        $gid = $this->id($r);
+        $accept = $r->input('answer') === 'accept';
+        return $this->attempt($r, "/groups/$gid", fn () => GroupService::respondAdvisorRequest($gid, $this->userId(), $accept, (string) $r->input('note')),
+            $accept ? __('groups.advisor_accepted') : __('groups.advisor_declined'));
     }
 
     // ----- Administrator ----------------------------------------------------

@@ -251,7 +251,7 @@ CREATE TABLE project_advisors (
     id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     group_id     BIGINT UNSIGNED NOT NULL,
     advisor_id   BIGINT UNSIGNED NOT NULL,
-    status       ENUM('requested','assigned','declined','replaced') NOT NULL DEFAULT 'requested',
+    status       ENUM('requested','accepted','assigned','declined','replaced') NOT NULL DEFAULT 'requested',
     active_key   TINYINT GENERATED ALWAYS AS (IF(status = 'assigned', 1, NULL)) STORED,
     requested_by BIGINT UNSIGNED NULL,
     assigned_by  BIGINT UNSIGNED NULL,

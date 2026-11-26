@@ -4,6 +4,20 @@ $this->layout('layouts/app', ['title' => __('menu.groups')]);
 $pages = max(1, (int) ceil($total / $per_page));
 ?>
 <h1 class="h4 mb-3"><?= e(__('menu.groups')) ?></h1>
+<?php if (!empty($advisorRequests)): $isAdv = \App\Core\Auth::activeRole() === 'advisor'; ?>
+    <div class="card border-primary mb-3"><div class="card-body">
+        <h2 class="h6"><i class="bi bi-person-raised-hand"></i> <?= e($isAdv ? __('groups.requests_for_advisor') : __('groups.requests_for_admin')) ?> (<?= count($advisorRequests) ?>)</h2>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Group ID</th><th><?= e(__('groups.name')) ?></th><th><?= e(__('dash.members')) ?></th><?php if (!$isAdv): ?><th><?= e(__('dash.advisor')) ?></th><?php endif; ?><th><?= e(__('groups.requested_at')) ?></th><th></th></tr></thead>
+            <tbody><?php foreach ($advisorRequests as $req): ?>
+                <tr><td><?= e($req['group_code']) ?></td><td><?= e($req['group_name']) ?></td><td><?= (int) $req['member_count'] ?></td>
+                    <?php if (!$isAdv): ?><td><?= e(full_name($req)) ?></td><?php endif; ?>
+                    <td class="small"><?= e(thai_date($req['created_at'], true)) ?></td>
+                    <td><a class="btn btn-sm btn-ppms" href="<?= e(url('/groups/' . (int) $req['group_id'])) ?>"><?= e($isAdv ? __('groups.answer_request') : __('groups.approve_request')) ?></a></td></tr>
+            <?php endforeach; ?></tbody>
+        </table></div>
+    </div></div>
+<?php endif; ?>
 <form class="row g-2 mb-3" method="get">
     <div class="col-md-6"><input type="search" class="form-control" name="q" value="<?= e($q) ?>" placeholder="<?= e(__('groups.search_placeholder')) ?>"></div>
     <div class="col-md-3"><select name="status" class="form-select">

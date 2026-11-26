@@ -101,6 +101,7 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         GroupService::submit($gid, 201);
         GroupService::verify($gid, self::ADMIN);
         GroupService::requestAdvisor($gid, self::ADVISOR, 201);
+        GroupService::respondAdvisorRequest($gid, self::ADVISOR, true, null);
         GroupService::assignAdvisor($gid, self::ADVISOR, self::ADMIN);
         $pid = (int) $this->db->value('SELECT id FROM projects WHERE group_id = :g', ['g' => $gid]);
         return [$gid, $pid];
@@ -424,6 +425,36 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         $codes = array_column($this->db->fetchAll('SELECT group_code FROM project_groups ORDER BY id'), 'group_code');
         $this->assertSame(count($codes), count(array_unique($codes)));
         $this->assertTrue($g3 > $g2);
+    }
+
+    /** Advisor request: the requested advisor answers first, the course administrator approves last. */
+    public function testAdvisorRequestNeedsAdvisorAcceptanceBeforeAdminApproval(): void
+    {
+        $gid = GroupService::create(1, 201, 1, 'ทีม');
+        GroupService::invite($gid, '6510000002', 201);
+        GroupService::respond((int) $this->db->value('SELECT id FROM project_members WHERE group_id = :g AND student_id = 2', ['g' => $gid]), 2, true, 202);
+        GroupService::submit($gid, 201);
+        GroupService::verify($gid, self::ADMIN);
+        GroupService::requestAdvisor($gid, self::ADVISOR, 201);
+        $this->assertSame('requested', GroupService::advisor($gid)['status']);
+        $this->assertSame(1, count(GroupService::advisorRequests(1, self::ADVISOR)));
+        // The administrator cannot approve before the advisor answers, nor silently pick someone else.
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::assignAdvisor($gid, self::ADVISOR, self::ADMIN), 'accepted');
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::assignAdvisor($gid, 102, self::ADMIN), 'reason');
+        // Only the requested advisor answers; declining needs a reason.
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::respondAdvisorRequest($gid, 102, true, null));
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::respondAdvisorRequest($gid, self::ADVISOR, false, ''));
+        GroupService::respondAdvisorRequest($gid, self::ADVISOR, false, 'ภาระงานเต็ม');
+        $this->assertTrue(GroupService::advisor($gid) === null, 'declined request is closed');
+        // The group asks another advisor, who accepts; the administrator approves last.
+        GroupService::requestAdvisor($gid, 102, 201);
+        GroupService::respondAdvisorRequest($gid, 102, true, 'ยินดีรับ');
+        $this->assertSame('accepted', GroupService::advisor($gid)['status']);
+        $this->assertSame('verified', $this->db->value('SELECT status FROM project_groups WHERE id = :g', ['g' => $gid]));
+        $this->assertSame(1, count(GroupService::advisorRequests(1, null)));
+        GroupService::assignAdvisor($gid, 102, self::ADMIN);
+        $this->assertSame(102, GroupService::advisorAssigned($gid));
+        $this->assertSame('active', $this->db->value('SELECT status FROM project_groups WHERE id = :g', ['g' => $gid]));
     }
 
     public function testGroupRules(): void

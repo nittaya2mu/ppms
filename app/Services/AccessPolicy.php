@@ -66,7 +66,10 @@ final class AccessPolicy
         return match (Auth::activeRole()) {
             'admin'     => true,
             'student'   => self::isMember($groupId),
-            'advisor'   => self::isAdvisor($groupId),
+            'advisor'   => self::isAdvisor($groupId) || (bool) Database::connection()->value(
+                "SELECT 1 FROM project_advisors WHERE group_id = :g AND advisor_id = :u AND status IN ('requested','accepted')",
+                ['g' => $groupId, 'u' => Auth::id()]
+            ),
             'committee' => (bool) Database::connection()->value(
                 "SELECT 1 FROM projects p JOIN proposal_submissions ps ON ps.project_id = p.id
                    JOIN committee_assignments ca ON ca.proposal_id = ps.id AND ca.status <> 'cancelled'

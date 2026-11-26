@@ -46,6 +46,7 @@ $router->group('', ['auth', 'password'], function (Router $r) {
     // Project Groups (all roles see what they are allowed to; checks inside)
     $r->get('/groups', [GroupController::class, 'index']);
     $r->get('/groups/{id}', [GroupController::class, 'showPage']);
+    $r->post('/groups/{id}/advisor-response', [GroupController::class, 'respondAdvisor'], ['role:advisor', 'csrf']);
     $r->group('', ['role:student', 'csrf'], function (Router $r) {
         $r->post('/groups', [GroupController::class, 'store']);
         $r->post('/groups/invitations/{member}', [GroupController::class, 'respond']);

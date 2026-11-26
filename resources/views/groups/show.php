@@ -1,5 +1,5 @@
 <?php
-/** @var array $group @var array $members @var ?array $advisor @var array $history @var bool $isLeader @var array $advisors @var ?array $topic @var int $minMembers @var int $maxMembers */
+/** @var array $group @var array $members @var ?array $advisor @var array $history @var bool $isLeader @var array $advisors @var ?array $topic @var int $minMembers @var int $maxMembers @var ?array $myRequest */
 use App\Core\Auth;
 
 $this->layout('layouts/app', ['title' => $group['group_code']]);
@@ -110,7 +110,12 @@ $base = '/groups/' . (int) $group['id'];
             <?php if ($advisor && $advisor['status'] === 'assigned'): ?>
                 <p class="mb-2"><i class="bi bi-person-check text-success"></i> <?= e(full_name($advisor)) ?></p>
             <?php elseif ($advisor): ?>
-                <p class="mb-2"><span class="badge text-bg-warning"><?= e(__('groups.advisor_pending')) ?></span> <?= e(full_name($advisor)) ?></p>
+                <p class="mb-2"><span class="badge <?= $advisor['status'] === 'accepted' ? 'text-bg-info' : 'text-bg-warning' ?>"><?= e(__('advisor_status.' . $advisor['status'])) ?></span> <?= e(full_name($advisor)) ?></p>
+                <?php if ($advisor['status'] === 'accepted' && $advisor['note']): ?><p class="small text-secondary mb-2"><?= e(__('groups.advisor_note')) ?>: <?= e($advisor['note']) ?></p><?php endif; ?>
+                <ol class="small text-secondary ps-3 mb-2">
+                    <li class="<?= $advisor['status'] === 'requested' ? 'fw-semibold text-body' : '' ?>"><?= e(__('groups.advisor_step1')) ?></li>
+                    <li class="<?= $advisor['status'] === 'accepted' ? 'fw-semibold text-body' : '' ?>"><?= e(__('groups.advisor_step2')) ?></li>
+                </ol>
             <?php else: ?>
                 <p class="text-secondary mb-2"><?= e(__('dash.no_advisor')) ?></p>
             <?php endif; ?>
@@ -125,17 +130,37 @@ $base = '/groups/' . (int) $group['id'];
                 </form>
             <?php endif; ?>
 
+            <?php if (!empty($myRequest)): ?>
+                <div class="border border-primary rounded p-2 mt-2">
+                    <div class="small fw-semibold mb-1"><?= e(__('groups.advisor_request_for_you')) ?></div>
+                    <form method="post" action="<?= e(url("$base/advisor-response")) ?>" class="row g-2">
+                        <?= csrf_field() ?>
+                        <div class="col-12"><textarea class="form-control form-control-sm" name="note" rows="2" placeholder="<?= e(__('groups.advisor_response_note')) ?>"></textarea></div>
+                        <div class="col-6"><button class="btn btn-sm btn-ppms w-100" name="answer" value="accept"><i class="bi bi-check2"></i> <?= e(__('groups.advisor_accept')) ?></button></div>
+                        <div class="col-6"><button class="btn btn-sm btn-outline-danger w-100" name="answer" value="decline" data-confirm-button="<?= e(__('groups.advisor_decline_confirm')) ?>"><i class="bi bi-x"></i> <?= e(__('groups.advisor_decline')) ?></button></div>
+                    </form>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($isAdmin && $advisor && $advisor['status'] === 'accepted'): ?>
+                <form method="post" action="<?= e(url("$base/advisor")) ?>" class="mt-2" data-confirm="<?= e(__('groups.advisor_approve_confirm')) ?>">
+                    <?= csrf_field() ?><input type="hidden" name="advisor_id" value="<?= (int) $advisor['advisor_id'] ?>">
+                    <button class="btn btn-sm btn-ppms w-100"><i class="bi bi-check2-all"></i> <?= e(__('groups.advisor_final_approve', ['name' => full_name($advisor)])) ?></button>
+                </form>
+            <?php endif; ?>
+
             <?php if ($isAdmin): ?>
+                <details class="mt-2 small" <?= $advisor ? '' : 'open' ?>><summary><?= e($advisor ? __('groups.assign_other') : __('groups.assign_advisor')) ?></summary>
                 <form method="post" action="<?= e(url("$base/advisor")) ?>" class="row g-2 mt-1">
                     <?= csrf_field() ?>
                     <div class="col-12"><select name="advisor_id" class="form-select form-select-sm" required>
                         <?php foreach ($advisors as $a): ?><option value="<?= (int) $a['id'] ?>" <?= $advisor && (int) $advisor['advisor_id'] === (int) $a['id'] ? 'selected' : '' ?>><?= e(full_name($a)) ?> (<?= (int) $a['load_count'] ?> กลุ่ม)</option><?php endforeach; ?>
                     </select></div>
-                    <?php if ($advisor && $advisor['status'] === 'assigned'): ?>
+                    <?php if ($advisor): ?>
                         <div class="col-12"><input class="form-control form-control-sm" name="reason" placeholder="<?= e(__('groups.change_reason')) ?>"></div>
                     <?php endif; ?>
-                    <div class="col-12"><button class="btn btn-sm btn-ppms w-100"><?= e(__('groups.assign_advisor')) ?></button></div>
-                </form>
+                    <div class="col-12"><button class="btn btn-sm btn-outline-primary w-100"><?= e(__('groups.assign_advisor')) ?></button></div>
+                </form></details>
             <?php endif; ?>
         </div></div>
 

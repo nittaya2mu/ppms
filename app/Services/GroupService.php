@@ -66,7 +66,7 @@ final class GroupService
     {
         return Database::connection()->fetch(
             "SELECT pa.*, u.title_th, u.first_name_th, u.last_name_th, u.email FROM project_advisors pa JOIN users u ON u.id = pa.advisor_id
-              WHERE pa.group_id = :g AND pa.status IN ('assigned','requested') ORDER BY pa.status = 'assigned' DESC, pa.id DESC LIMIT 1",
+              WHERE pa.group_id = :g AND pa.status IN ('assigned','requested','accepted') ORDER BY pa.status = 'assigned' DESC, pa.id DESC LIMIT 1",
             ['g' => $groupId]
         );
     }
@@ -283,7 +283,10 @@ final class GroupService
         });
     }
 
-    /** Leader requests an advisor (FR-GRP-05). */
+    /**
+     * Leader requests an advisor (FR-GRP-05). Step 1 of 3: the requested advisor accepts or
+     * declines, then the course administrator gives the final approval.
+     */
     public static function requestAdvisor(int $groupId, int $advisorId, int $userId): void
     {
         $group = self::find($groupId) ?? throw new RuleViolation('group_missing', 'Group not found');
@@ -293,12 +296,60 @@ final class GroupService
         self::assertAdvisorRole($advisorId);
         $db = Database::connection();
         $db->transaction(function (Database $db) use ($groupId, $advisorId, $userId, $group) {
-            $db->query("UPDATE project_advisors SET status = 'declined', ended_at = NOW() WHERE group_id = :g AND status = 'requested'", ['g' => $groupId]);
+            $db->query("UPDATE project_advisors SET status = 'declined', ended_at = NOW(), note = COALESCE(note, 'ยกเลิกเพราะนิสิตขออาจารย์ท่านใหม่') WHERE group_id = :g AND status IN ('requested','accepted')", ['g' => $groupId]);
             $db->insert('project_advisors', ['group_id' => $groupId, 'advisor_id' => $advisorId, 'status' => 'requested', 'requested_by' => $userId]);
             AuditLogger::log('advisor.requested', 'group', $groupId, null, ['advisor_id' => $advisorId], userId: $userId);
-            NotificationService::notify(NotificationService::admins(), 'advisor.requested', 'คำขออาจารย์ที่ปรึกษา',
-                "กลุ่ม {$group['group_code']} ขออาจารย์ที่ปรึกษา", '/groups/' . $groupId, 'group', $groupId);
+            NotificationService::notify([$advisorId], 'advisor.requested', 'นิสิตขอให้ท่านเป็นอาจารย์ที่ปรึกษา',
+                "กลุ่ม {$group['group_code']} {$group['group_name']} รอท่านตอบรับ", '/groups/' . $groupId, 'group', $groupId);
         });
+    }
+
+    /** Step 2: the requested advisor accepts (goes to the administrator) or declines (reason required). */
+    public static function respondAdvisorRequest(int $groupId, int $advisorId, bool $accept, ?string $note): void
+    {
+        $group = self::find($groupId) ?? throw new RuleViolation('group_missing', 'Group not found');
+        $db = Database::connection();
+        $req = $db->fetch("SELECT * FROM project_advisors WHERE group_id = :g AND advisor_id = :a AND status = 'requested' ORDER BY id DESC LIMIT 1", ['g' => $groupId, 'a' => $advisorId]);
+        if ($req === null) {
+            throw new RuleViolation('advisor_request_missing', 'No pending request for you');
+        }
+        $note = trim((string) $note);
+        if (!$accept && $note === '') {
+            throw new RuleViolation('reason_required', 'A reason is required to decline');
+        }
+        $db->transaction(function (Database $db) use ($req, $groupId, $advisorId, $accept, $note, $group) {
+            $db->update('project_advisors', $accept
+                ? ['status' => 'accepted', 'note' => $note ?: null]
+                : ['status' => 'declined', 'ended_at' => date('Y-m-d H:i:s'), 'note' => $note], 'id = :id', ['id' => (int) $req['id']]);
+            AuditLogger::log($accept ? 'advisor.accepted' : 'advisor.declined', 'group', $groupId, null, ['advisor_id' => $advisorId], $note ?: null, $advisorId);
+            $students = self::memberUserIds($groupId);
+            if ($accept) {
+                NotificationService::notify(NotificationService::admins(), 'advisor.accepted', 'อาจารย์ตอบรับเป็นที่ปรึกษาแล้ว รออนุมัติ',
+                    "กลุ่ม {$group['group_code']} {$group['group_name']}", '/groups/' . $groupId, 'group', $groupId);
+                NotificationService::notify($students, 'advisor.accepted', 'อาจารย์ตอบรับเป็นที่ปรึกษาแล้ว',
+                    'รอผู้ประสานงานรายวิชาอนุมัติขั้นสุดท้าย', '/groups', 'group', $groupId);
+            } else {
+                NotificationService::notify($students, 'advisor.declined', 'อาจารย์ไม่สามารถรับเป็นที่ปรึกษา',
+                    $note . ' (กรุณาขออาจารย์ท่านอื่น)', '/groups', 'group', $groupId);
+            }
+        });
+    }
+
+    /** Requests waiting for this advisor's answer, or (admin) accepted requests waiting for approval. */
+    public static function advisorRequests(int $offeringId, ?int $advisorId): array
+    {
+        $params = ['o' => $offeringId];
+        $where = $advisorId !== null ? "pa.status = 'requested' AND pa.advisor_id = :a" : "pa.status = 'accepted'";
+        if ($advisorId !== null) {
+            $params['a'] = $advisorId;
+        }
+        return Database::connection()->fetchAll(
+            "SELECT pa.*, g.group_code, g.group_name, g.status AS group_status, u.title_th, u.first_name_th, u.last_name_th,
+                    (SELECT COUNT(*) FROM project_members m WHERE m.group_id = g.id AND m.status = 'active') AS member_count
+               FROM project_advisors pa JOIN project_groups g ON g.id = pa.group_id JOIN users u ON u.id = pa.advisor_id
+              WHERE g.offering_id = :o AND g.deleted_at IS NULL AND $where ORDER BY pa.created_at",
+            $params
+        );
     }
 
     /** Admin assigns (or replaces) the advisor (FR-GRP-06); activates a verified group. */
@@ -314,6 +365,14 @@ final class GroupService
         if ($current !== null && trim((string) $reason) === '') {
             throw new RuleViolation('reason_required', 'Changing the advisor requires a reason'); // OQ-04
         }
+        // A student request must be answered by the requested advisor before the final approval.
+        $pending = $db->fetch("SELECT * FROM project_advisors WHERE group_id = :g AND status = 'requested' ORDER BY id DESC LIMIT 1", ['g' => $groupId]);
+        if ($pending !== null && (int) $pending['advisor_id'] === $advisorId) {
+            throw new RuleViolation('advisor_not_accepted', 'The requested advisor has not accepted yet');
+        }
+        if ($pending !== null && $current === null && trim((string) $reason) === '') {
+            throw new RuleViolation('advisor_override_reason', 'Assigning a different advisor than requested requires a reason');
+        }
         // The advisor may not be a committee member of an active round of this project.
         if ($group['project_id'] && $db->value(
             "SELECT 1 FROM committee_assignments ca JOIN proposal_submissions ps ON ps.id = ca.proposal_id
@@ -326,8 +385,9 @@ final class GroupService
             if ($current !== null) {
                 $db->update('project_advisors', ['status' => 'replaced', 'ended_at' => date('Y-m-d H:i:s')], 'id = :id', ['id' => (int) $current['id']]);
             }
-            $requested = $db->value("SELECT id FROM project_advisors WHERE group_id = :g AND status = 'requested' AND advisor_id = :a", ['g' => $groupId, 'a' => $advisorId]);
-            $db->query("UPDATE project_advisors SET status = 'declined', ended_at = NOW() WHERE group_id = :g AND status = 'requested' AND advisor_id <> :a", ['g' => $groupId, 'a' => $advisorId]);
+            $requested = $db->value("SELECT id FROM project_advisors WHERE group_id = :g AND status = 'accepted' AND advisor_id = :a", ['g' => $groupId, 'a' => $advisorId]);
+            $db->query("UPDATE project_advisors SET status = 'declined', ended_at = NOW(), note = COALESCE(note, :n) WHERE group_id = :g AND status IN ('requested','accepted') AND advisor_id <> :a",
+                ['g' => $groupId, 'a' => $advisorId, 'n' => 'ผู้ประสานงานรายวิชามอบหมายอาจารย์ท่านอื่น']);
             $data = ['status' => 'assigned', 'assigned_by' => $adminId, 'assigned_at' => date('Y-m-d H:i:s'), 'note' => $reason];
             if ($requested) {
                 $db->update('project_advisors', $data, 'id = :id', ['id' => (int) $requested]);
@@ -434,7 +494,7 @@ final class GroupService
             "SELECT g.*, p.id AS project_id, p.title_th,
                     (SELECT COUNT(*) FROM project_members m WHERE m.group_id = g.id AND m.status = 'active') AS member_count,
                     (SELECT CONCAT(COALESCE(u.title_th,''), u.first_name_th, ' ', u.last_name_th) FROM project_advisors pa JOIN users u ON u.id = pa.advisor_id WHERE pa.group_id = g.id AND pa.status = 'assigned' LIMIT 1) AS advisor_name,
-                    (SELECT CONCAT(COALESCE(u.title_th,''), u.first_name_th, ' ', u.last_name_th) FROM project_advisors pa JOIN users u ON u.id = pa.advisor_id WHERE pa.group_id = g.id AND pa.status = 'requested' LIMIT 1) AS requested_advisor,
+                    (SELECT CONCAT(COALESCE(u.title_th,''), u.first_name_th, ' ', u.last_name_th) FROM project_advisors pa JOIN users u ON u.id = pa.advisor_id WHERE pa.group_id = g.id AND pa.status IN ('requested','accepted') ORDER BY pa.id DESC LIMIT 1) AS requested_advisor,
                     (SELECT t.status FROM project_topics t WHERE t.project_id = p.id AND t.current_key = 1) AS topic_status,
                     (SELECT ps.status FROM proposal_submissions ps WHERE ps.project_id = p.id) AS proposal_status
                FROM project_groups g LEFT JOIN projects p ON p.group_id = g.id
