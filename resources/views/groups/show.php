@@ -109,6 +109,15 @@ $base = '/groups/' . (int) $group['id'];
             <h2 class="h6"><?= e(__('dash.advisor')) ?></h2>
             <?php if ($advisor && $advisor['status'] === 'assigned'): ?>
                 <p class="mb-2"><i class="bi bi-person-check text-success"></i> <?= e(full_name($advisor)) ?></p>
+                <?php if ($isAdmin): ?>
+                    <details class="small mb-2"><summary class="text-danger"><?= e(__('groups.revoke_advisor')) ?></summary>
+                        <form method="post" action="<?= e(url("$base/advisor/revoke")) ?>" class="mt-1" data-confirm="<?= e(__('groups.revoke_confirm')) ?>">
+                            <?= csrf_field() ?>
+                            <textarea class="form-control form-control-sm mb-1" name="reason" rows="2" required placeholder="<?= e(__('groups.revoke_reason')) ?>"></textarea>
+                            <div class="form-text mb-1"><?= e(__('groups.revoke_help')) ?></div>
+                            <button class="btn btn-sm btn-outline-danger w-100"><i class="bi bi-x-circle"></i> <?= e(__('groups.revoke_advisor')) ?></button>
+                        </form></details>
+                <?php endif; ?>
             <?php elseif ($advisor): ?>
                 <p class="mb-2"><span class="badge <?= $advisor['status'] === 'accepted' ? 'text-bg-info' : 'text-bg-warning' ?>"><?= e(__('advisor_status.' . $advisor['status'])) ?></span> <?= e(full_name($advisor)) ?></p>
                 <?php if ($advisor['status'] === 'accepted' && $advisor['note']): ?><p class="small text-secondary mb-2"><?= e(__('groups.advisor_note')) ?>: <?= e($advisor['note']) ?></p><?php endif; ?>

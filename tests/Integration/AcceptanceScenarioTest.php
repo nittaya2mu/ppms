@@ -457,6 +457,34 @@ final class AcceptanceScenarioTest extends DatabaseTestCase
         $this->assertSame('active', $this->db->value('SELECT status FROM project_groups WHERE id = :g', ['g' => $gid]));
     }
 
+    public function testAdminRevokesAdvisorApproval(): void
+    {
+        [$gid, $pid] = $this->registeredGroup();
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::revokeAdvisor($gid, self::ADMIN, ''), 'reason');
+        GroupService::revokeAdvisor($gid, self::ADMIN, 'อาจารย์ลาศึกษาต่อ');
+        $this->assertTrue(GroupService::advisorAssigned($gid) === null);
+        $this->assertSame('verified', $this->db->value('SELECT status FROM project_groups WHERE id = :g', ['g' => $gid]));
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::revokeAdvisor($gid, self::ADMIN, 'ซ้ำ'));   // nothing to revoke
+        TopicService::saveDraft($pid, $this->topicFields(), 201);
+        $this->assertThrows(RuleViolation::class, fn () => TopicService::submit($pid, 201), 'active');   // needs a new advisor first
+        // New request -> advisor accepts -> admin approves; the group is active again.
+        GroupService::requestAdvisor($gid, 102, 201);
+        GroupService::respondAdvisorRequest($gid, 102, true, null);
+        GroupService::assignAdvisor($gid, 102, self::ADMIN);
+        $this->assertSame('active', $this->db->value('SELECT status FROM project_groups WHERE id = :g', ['g' => $gid]));
+        TopicService::submit($pid, 201);
+    }
+
+    public function testAdvisorCannotBeRevokedDuringEvaluation(): void
+    {
+        [$gid, $pid] = $this->registeredGroup();
+        $this->approvedTopic($pid);
+        $this->submitProposal($pid);
+        ProposalService::advisorDecide($pid, self::ADVISOR, 'ready', null);
+        ProposalService::assignCommittee((int) ProposalService::forProject($pid)['id'], self::C1, self::C2, date('Y-m-d H:i', strtotime('+7 days')), self::ADMIN);
+        $this->assertThrows(RuleViolation::class, fn () => GroupService::revokeAdvisor($gid, self::ADMIN, 'เปลี่ยนอาจารย์'), 'evaluation');
+    }
+
     public function testGroupRules(): void
     {
         $gid = GroupService::create(1, 201, 1, 'ทีม A');

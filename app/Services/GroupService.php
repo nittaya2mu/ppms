@@ -405,6 +405,40 @@ final class GroupService
         });
     }
 
+    /**
+     * The course administrator cancels the advisor approval (reason required, audited).
+     * An active group returns to Verified and needs a new advisor before topic work continues.
+     * Not allowed while an evaluation round is running (the advisor is one of its evaluators).
+     */
+    public static function revokeAdvisor(int $groupId, int $adminId, string $reason): void
+    {
+        $group = self::find($groupId) ?? throw new RuleViolation('group_missing', 'Group not found');
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw new RuleViolation('reason_required', 'A reason is required');
+        }
+        $db = Database::connection();
+        $current = $db->fetch("SELECT * FROM project_advisors WHERE group_id = :g AND status = 'assigned'", ['g' => $groupId])
+            ?? throw new RuleViolation('advisor_missing', 'No approved advisor');
+        if ($group['project_id'] && $db->value(
+            "SELECT 1 FROM committee_assignments ca JOIN proposal_submissions ps ON ps.id = ca.proposal_id WHERE ps.project_id = :p AND ca.status = 'active'",
+            ['p' => (int) $group['project_id']]
+        )) {
+            throw new RuleViolation('advisor_revoke_evaluation', 'An evaluation round is in progress');
+        }
+        $db->transaction(function (Database $db) use ($group, $groupId, $adminId, $reason, $current) {
+            $db->update('project_advisors', ['status' => 'replaced', 'ended_at' => date('Y-m-d H:i:s'), 'note' => 'ยกเลิกการอนุมัติ: ' . $reason], 'id = :id', ['id' => (int) $current['id']]);
+            if ($group['status'] === 'active') {
+                (new WorkflowEngine(Workflows::group()))->apply($groupId, 'revoke_advisor', 'admin', $adminId, $reason);
+            }
+            AuditLogger::log('advisor.revoked', 'group', $groupId, ['advisor_id' => (int) $current['advisor_id']], null, $reason, $adminId);
+            NotificationService::notify([(int) $current['advisor_id']], 'advisor.revoked', 'ยกเลิกการเป็นอาจารย์ที่ปรึกษา',
+                "กลุ่ม {$group['group_code']} {$group['group_name']}: $reason", '/groups', 'group', $groupId);
+            NotificationService::notify(self::memberUserIds($groupId), 'advisor.revoked', 'ผู้ประสานงานรายวิชายกเลิกอาจารย์ที่ปรึกษาของกลุ่ม',
+                $reason . ' (กรุณาขออาจารย์ที่ปรึกษาใหม่)', '/groups', 'group', $groupId);
+        });
+    }
+
     /** Membership change after registration: admin only, with a reason (Section 4 BR-4, BR-5). */
     public static function adminAddMember(int $groupId, string $studentCode, int $adminId, string $reason): void
     {

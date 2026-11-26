@@ -166,6 +166,14 @@ check(str_contains($admin->body, 'รออนุมัติลำดับส�
 $admin->get("/groups/$gid");
 $admin->post("/groups/$gid/advisor", ['advisor_id' => 101]);
 $admin->ok('admin approves advisor (final)');
+check(str_contains($admin->body, 'ยกเลิกการอนุมัติอาจารย์ที่ปรึกษา'), 'admin sees revoke option');
+$admin->post("/groups/$gid/advisor/revoke", ['reason' => 'ทดสอบยกเลิก']);
+$admin->ok('admin revokes advisor');
+check($q('SELECT status FROM project_groups WHERE id = ?', [$gid]) === 'verified', 'group back to verified');
+$s1->post("/groups/$gid/advisor-request", ['advisor_id' => 101]);
+$adv->post("/groups/$gid/advisor-response", ['answer' => 'accept', 'note' => '']);
+$admin->post("/groups/$gid/advisor", ['advisor_id' => 101]);
+$admin->ok('admin approves advisor again');
 check($q('SELECT status FROM project_groups WHERE id = ?', [$gid]) === 'active', 'group is active');
 
 $pid = (int) $q('SELECT id FROM projects WHERE group_id = ? ORDER BY id DESC LIMIT 1', [$gid]);

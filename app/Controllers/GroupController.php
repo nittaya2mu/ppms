@@ -118,6 +118,13 @@ final class GroupController extends Controller
         return $this->attempt($r, '/groups', fn () => GroupService::requestAdvisor($gid, (int) $r->input('advisor_id'), $this->userId()), __('groups.advisor_requested'));
     }
 
+    /** Admin cancels the advisor approval. */
+    public function revokeAdvisor(Request $r): Response
+    {
+        $gid = $this->id($r);
+        return $this->attempt($r, "/groups/$gid", fn () => GroupService::revokeAdvisor($gid, $this->userId(), (string) $r->input('reason')), __('groups.advisor_revoked'));
+    }
+
     /** The requested advisor accepts or declines (step 2 of 3). */
     public function respondAdvisor(Request $r): Response
     {

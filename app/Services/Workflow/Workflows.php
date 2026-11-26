@@ -17,6 +17,7 @@ final class Workflows
             'reject'     => ['from' => ['submitted'],                     'to' => 'draft',     'roles' => ['admin'], 'reason' => true],
             'verify'     => ['from' => ['submitted'],                     'to' => 'verified',  'roles' => ['admin']],
             'activate'   => ['from' => ['verified'],                      'to' => 'active',    'roles' => ['admin', 'system']],
+            'revoke_advisor' => ['from' => ['active'],                    'to' => 'verified',  'roles' => ['admin'], 'reason' => true],
             'deactivate' => ['from' => ['draft', 'submitted', 'verified', 'active'], 'to' => 'inactive', 'roles' => ['admin'], 'reason' => true],
             'reactivate' => ['from' => ['inactive'],                      'to' => 'active',    'roles' => ['admin'], 'reason' => true],
         ]);

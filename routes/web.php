@@ -60,6 +60,7 @@ $router->group('', ['auth', 'password'], function (Router $r) {
         $r->post('/groups/{id}/verify', [GroupController::class, 'verify']);
         $r->post('/groups/{id}/reject', [GroupController::class, 'reject']);
         $r->post('/groups/{id}/advisor', [GroupController::class, 'assignAdvisor']);
+        $r->post('/groups/{id}/advisor/revoke', [GroupController::class, 'revokeAdvisor']);
         $r->post('/groups/{id}/members/add', [GroupController::class, 'adminAddMember']);
         $r->post('/groups/{id}/members/{member}/admin', [GroupController::class, 'adminMember']);
     });
